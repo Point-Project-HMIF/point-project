@@ -148,15 +148,15 @@ export function HomePage() {
             title={`Jadwal ${eventName}`}
             body="Tahapan disusun agar peserta dapat mengikuti proses pendaftaran, pengumpulan karya, seleksi, dan final dengan jelas."
           />
-          <div className="mt-10 overflow-x-auto pb-3">
-            <ol className="flex min-w-max">
+          <div className="mt-10">
+            <ol className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
               {timeline.map((item, index) => (
-                <li key={item.id} className="w-[270px] shrink-0 pr-5 last:pr-0 sm:w-[300px]">
+                <li key={item.id} className="min-w-0">
                   <div className="flex items-center">
                     <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border-4 border-white bg-lagoon text-sm font-black text-white shadow-soft">
                       {item.sortOrder}
                     </span>
-                    {index < timeline.length - 1 ? <span className="h-0.5 flex-1 bg-ink/10" /> : null}
+                    {index < timeline.length - 1 ? <span className="hidden h-0.5 flex-1 bg-ink/10 sm:block" /> : null}
                   </div>
                   <article className="mt-5 rounded-lg border border-ink/10 bg-white p-4 shadow-soft">
                     <p className="text-xs font-black uppercase tracking-wide text-coral">
