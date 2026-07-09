@@ -34,11 +34,23 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string):
   }
 
   const response = await fetch(`${API_URL}${path}`, { ...init, headers });
-  const payload = (await response.json()) as APIEnvelope<T>;
+  const raw = await response.text();
+  let payload: APIEnvelope<T> = {};
+  if (raw) {
+    try {
+      payload = JSON.parse(raw) as APIEnvelope<T>;
+    } catch {
+      payload = { error: raw.trim() };
+    }
+  }
   if (!response.ok) {
-    throw new Error(payload.error ?? "API request failed");
+    throw new Error(payload.error ?? `API request failed (${response.status})`);
   }
   return payload.data as T;
+}
+
+export function isNotFoundError(error: unknown) {
+  return error instanceof Error && /404|not found/i.test(error.message);
 }
 
 export const api = {

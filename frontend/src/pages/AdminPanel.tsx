@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { SectionHeading, StatusPill } from "../components/Layout";
-import { api } from "../lib/api";
+import { api, isNotFoundError } from "../lib/api";
 import type {
   AdminStats,
   AdminUser,
@@ -76,6 +76,24 @@ const emptyFAQForm = (eventId = "", sortOrder = 1): FAQPayload => ({
   sortOrder,
   isPublished: true
 });
+
+const faqTemplates = [
+  {
+    label: "Minimal peserta",
+    question: "Jumlah minimal peserta per tim",
+    answer: "Minimal 2 peserta dalam satu tim."
+  },
+  {
+    label: "Maksimal peserta",
+    question: "Jumlah maksimal peserta per tim",
+    answer: "Maksimal 3 peserta dalam satu tim."
+  },
+  {
+    label: "Aturan tambahan",
+    question: "Template aturan tambahan",
+    answer: "Admin atau panitia dapat menambahkan aturan lain sesuai kebutuhan event aktif."
+  }
+];
 
 export function AdminPanel() {
   const [token, setToken] = useState(localStorage.getItem("pointproject.adminToken") ?? "");
@@ -169,7 +187,10 @@ export function AdminPanel() {
         const [nextCommittee, nextTimeline, nextFAQs] = await Promise.all([
           api.committee(active.id),
           api.timeline(active.id),
-          api.adminFaqs(nextToken, active.id)
+          api.adminFaqs(nextToken, active.id).catch((err) => {
+            if (isNotFoundError(err)) return [];
+            throw err;
+          })
         ]);
         setStats(nextStats);
         setTeams(nextTeams ?? []);
@@ -722,6 +743,30 @@ export function AdminPanel() {
                 <form onSubmit={saveFAQ} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
                   <h2 className="text-xl font-black">{editingFaqId ? "Edit FAQ" : "Tambah FAQ / Aturan"}</h2>
                   <div className="mt-5 grid gap-4">
+                    <div>
+                      <p className="label">Template cepat</p>
+                      <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
+                        {faqTemplates.map((template) => (
+                          <button
+                            key={template.label}
+                            type="button"
+                            className="btn-secondary justify-start px-3 py-2 text-left"
+                            onClick={() =>
+                              setFaqForm((current) => ({
+                                ...current,
+                                eventId: event?.id ?? current.eventId,
+                                question: template.question,
+                                answer: template.answer,
+                                sortOrder: current.sortOrder || faqs.length + 1,
+                                isPublished: true
+                              }))
+                            }
+                          >
+                            {template.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <TextField
                       label="Pertanyaan"
                       value={faqForm.question}

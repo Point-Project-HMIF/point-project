@@ -13,7 +13,7 @@ import {
   UsersRound
 } from "lucide-react";
 import { SectionHeading, StatusPill } from "../components/Layout";
-import { api } from "../lib/api";
+import { api, isNotFoundError } from "../lib/api";
 import type { Announcement, Category, CommitteeMember, Event, FAQ, TimelineItem } from "../lib/types";
 
 export function HomePage() {
@@ -35,7 +35,10 @@ export function HomePage() {
           api.timeline(active.id),
           api.committee(active.id),
           api.announcements(active.id),
-          api.faqs(active.id)
+          api.faqs(active.id).catch((err) => {
+            if (isNotFoundError(err)) return [];
+            throw err;
+          })
         ]);
         if (!alive) return;
         setEvent(active);
