@@ -38,7 +38,7 @@ export function DashboardPage() {
     api
       .participantDashboard(nextTeamId)
       .then((nextDashboard) => {
-        setDashboard(nextDashboard);
+        setDashboard(normalizeDashboard(nextDashboard));
         localStorage.setItem("pointproject.teamId", nextTeamId);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Dashboard tidak ditemukan."))
@@ -59,7 +59,7 @@ export function DashboardPage() {
     setLoading(true);
     try {
       await api.submitWork(dashboard.team.id, submission);
-      await api.participantDashboard(dashboard.team.id).then(setDashboard);
+      await api.participantDashboard(dashboard.team.id).then((nextDashboard) => setDashboard(normalizeDashboard(nextDashboard)));
       setSubmission({ stage: "final", proposalUrl: "", prototypeUrl: "", pptUrl: "", reportUrl: "", posterUrl: "" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission gagal dikirim.");
@@ -255,4 +255,16 @@ export function DashboardPage() {
       </div>
     </section>
   );
+}
+
+function normalizeDashboard(dashboard: ParticipantDashboard): ParticipantDashboard {
+  return {
+    ...dashboard,
+    team: {
+      ...dashboard.team,
+      members: dashboard.team.members ?? []
+    },
+    submissions: dashboard.submissions ?? [],
+    announcements: dashboard.announcements ?? []
+  };
 }

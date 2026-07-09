@@ -38,7 +38,7 @@ func (s *PostgresStore) ListEvents(ctx context.Context) ([]models.Event, error) 
 	}
 	defer rows.Close()
 
-	var events []models.Event
+	events := make([]models.Event, 0)
 	for rows.Next() {
 		var event models.Event
 		if err := rows.Scan(&event.ID, &event.Name, &event.Theme, &event.Year, &event.StartDate, &event.EndDate, &event.Status); err != nil {
@@ -107,7 +107,7 @@ func (s *PostgresStore) ListCategories(ctx context.Context, eventID string) ([]m
 	}
 	defer rows.Close()
 
-	var categories []models.Category
+	categories := make([]models.Category, 0)
 	for rows.Next() {
 		category, err := scanCategory(rows)
 		if err != nil {
@@ -162,7 +162,7 @@ func (s *PostgresStore) ListTimeline(ctx context.Context, eventID string) ([]mod
 	}
 	defer rows.Close()
 
-	var items []models.TimelineItem
+	items := make([]models.TimelineItem, 0)
 	for rows.Next() {
 		var item models.TimelineItem
 		if err := rows.Scan(&item.ID, &item.EventID, &item.Label, &item.StartDate, &item.EndDate, &item.Description, &item.SortOrder); err != nil {
@@ -228,7 +228,7 @@ func (s *PostgresStore) ListCommittee(ctx context.Context, eventID string) ([]mo
 	}
 	defer rows.Close()
 
-	var members []models.CommitteeMember
+	members := make([]models.CommitteeMember, 0)
 	for rows.Next() {
 		var member models.CommitteeMember
 		if err := rows.Scan(&member.ID, &member.EventID, &member.Name, &member.Identity, &member.Position, &member.Division); err != nil {
@@ -260,7 +260,7 @@ func (s *PostgresStore) ListAnnouncements(ctx context.Context, eventID, kind str
 	}
 	defer rows.Close()
 
-	var announcements []models.Announcement
+	announcements := make([]models.Announcement, 0)
 	for rows.Next() {
 		announcement, err := scanAnnouncement(rows)
 		if err != nil {
@@ -287,6 +287,9 @@ func scanAnnouncement(row interface{ Scan(dest ...any) error }) (models.Announce
 	}
 	if len(raw) > 0 {
 		_ = json.Unmarshal(raw, &announcement.Results)
+	}
+	if announcement.Results == nil {
+		announcement.Results = []models.AnnouncementResult{}
 	}
 	return announcement, nil
 }
@@ -484,6 +487,9 @@ func scanTeam(row interface{ Scan(dest ...any) error }) (models.Team, error) {
 	if len(raw) > 0 {
 		_ = json.Unmarshal(raw, &team.Members)
 	}
+	if team.Members == nil {
+		team.Members = []models.TeamMember{}
+	}
 	team.CreatedAt = created.Format(time.RFC3339)
 	return team, nil
 }
@@ -507,7 +513,7 @@ func (s *PostgresStore) listSubmissions(ctx context.Context, teamID string) ([]m
 	}
 	defer rows.Close()
 
-	var submissions []models.Submission
+	submissions := make([]models.Submission, 0)
 	for rows.Next() {
 		var submission models.Submission
 		var submitted time.Time
@@ -607,7 +613,7 @@ func (s *PostgresStore) ListAdminUsers(ctx context.Context) ([]models.AdminUser,
 	}
 	defer rows.Close()
 
-	var users []models.AdminUser
+	users := make([]models.AdminUser, 0)
 	for rows.Next() {
 		var user models.AdminUser
 		if err := rows.Scan(&user.ID, &user.Name, &user.NIM, &user.Email, &user.Role, &user.Division); err != nil {
@@ -747,7 +753,7 @@ func (s *PostgresStore) ListTeams(ctx context.Context, filters models.TeamFilter
 	}
 	defer rows.Close()
 
-	var teams []models.Team
+	teams := make([]models.Team, 0)
 	for rows.Next() {
 		team, err := scanTeam(rows)
 		if err != nil {

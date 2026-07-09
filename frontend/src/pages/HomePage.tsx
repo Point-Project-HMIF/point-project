@@ -37,10 +37,10 @@ export function HomePage() {
         ]);
         if (!alive) return;
         setEvent(active);
-        setCategories(nextCategories);
-        setTimeline(nextTimeline);
-        setCommittee(nextCommittee);
-        setAnnouncements(nextAnnouncements);
+        setCategories(nextCategories ?? []);
+        setTimeline(nextTimeline ?? []);
+        setCommittee(nextCommittee ?? []);
+        setAnnouncements(nextAnnouncements ?? []);
       })
       .catch((err) => {
         if (!alive) return;
@@ -52,7 +52,7 @@ export function HomePage() {
   }, []);
 
   const winnerAnnouncement = useMemo(
-    () => announcements.find((announcement) => announcement.type === "pemenang"),
+    () => (announcements ?? []).find((announcement) => announcement.type === "pemenang"),
     [announcements]
   );
 

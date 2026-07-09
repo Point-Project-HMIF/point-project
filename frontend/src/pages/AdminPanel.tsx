@@ -154,12 +154,12 @@ export function AdminPanel() {
       .then(async ([nextStats, nextTeams, nextUsers, active]) => {
         const [nextCommittee, nextTimeline] = await Promise.all([api.committee(active.id), api.timeline(active.id)]);
         setStats(nextStats);
-        setTeams(nextTeams);
-        setAdminUsers(nextUsers);
+        setTeams(nextTeams ?? []);
+        setAdminUsers(nextUsers ?? []);
         setEvent(active);
-        setCommittee(nextCommittee);
-        setTimeline(nextTimeline);
-        setTimelineDraft(nextTimeline.map(timelineToInput));
+        setCommittee(nextCommittee ?? []);
+        setTimeline(nextTimeline ?? []);
+        setTimelineDraft((nextTimeline ?? []).map(timelineToInput));
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : "Gagal memuat data admin.");
@@ -194,7 +194,7 @@ export function AdminPanel() {
     setError("");
     try {
       const detail = await api.adminTeamDetail(token, teamId);
-      setSelectedTeam(detail);
+      setSelectedTeam(normalizeTeamDetail(detail));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal memuat detail tim.");
     } finally {
@@ -701,6 +701,17 @@ function timelineToInput(item: TimelineItem): TimelineItemInput {
     endDate: item.endDate,
     description: item.description,
     sortOrder: item.sortOrder
+  };
+}
+
+function normalizeTeamDetail(detail: TeamDetail): TeamDetail {
+  return {
+    ...detail,
+    team: {
+      ...detail.team,
+      members: detail.team.members ?? []
+    },
+    submissions: detail.submissions ?? []
   };
 }
 

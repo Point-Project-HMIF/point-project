@@ -17,8 +17,9 @@ export function AnnouncementsPage() {
       .events()
       .then((nextEvents) => {
         if (!alive) return;
-        setEvents(nextEvents);
-        setEventId(nextEvents[0]?.id ?? "");
+        const safeEvents = nextEvents ?? [];
+        setEvents(safeEvents);
+        setEventId(safeEvents[0]?.id ?? "");
       })
       .catch((err) => {
         if (!alive) return;
@@ -33,12 +34,12 @@ export function AnnouncementsPage() {
     if (!eventId) return;
     api
       .announcements(eventId, type)
-      .then(setAnnouncements)
+      .then((nextAnnouncements) => setAnnouncements(nextAnnouncements ?? []))
       .catch((err) => setError(err instanceof Error ? err.message : "Gagal memuat pengumuman."));
   }, [eventId, type]);
 
   const winners = useMemo(
-    () => announcements.find((announcement) => announcement.type === "pemenang")?.results ?? [],
+    () => (announcements ?? []).find((announcement) => announcement.type === "pemenang")?.results ?? [],
     [announcements]
   );
 
