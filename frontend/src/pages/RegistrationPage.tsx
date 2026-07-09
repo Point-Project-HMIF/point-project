@@ -8,6 +8,9 @@ import type { Category, Event, EventRules, RegistrationPayload, Team, TeamMember
 const steps = ["Data Tim", "Anggota", "Kategori", "Upload"];
 
 const emptyMember = (): TeamMember => ({ name: "", email: "", role: "" });
+const maxAdditionalMembers = (rules: EventRules) => Math.max(rules.maxTeamMembers - 1, 0);
+const initialAdditionalMembers = (rules: EventRules) =>
+  Math.min(Math.max(rules.minTeamMembers - 1, 0), maxAdditionalMembers(rules));
 
 export function RegistrationPage() {
   const [event, setEvent] = useState<Event | null>(null);
@@ -42,7 +45,7 @@ export function RegistrationPage() {
         setEvent(active);
         setRules(nextRules);
         setCategories(nextCategories);
-        setMembers(Array.from({ length: Math.max(nextRules.minTeamMembers - 1, 0) }, emptyMember));
+        setMembers(Array.from({ length: initialAdditionalMembers(nextRules) }, emptyMember));
         setForm((current) => ({
           ...current,
           eventId: active.id,
@@ -64,7 +67,8 @@ export function RegistrationPage() {
   );
   const filledMembers = useMemo(() => members.filter((member) => member.name.trim() !== ""), [members]);
   const totalMembers = 1 + filledMembers.length;
-  const canAddMember = totalMembers < rules.maxTeamMembers;
+  const additionalMemberLimit = maxAdditionalMembers(rules);
+  const canAddMember = members.length < additionalMemberLimit;
 
   function updateField<K extends keyof RegistrationPayload>(key: K, value: RegistrationPayload[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -78,6 +82,10 @@ export function RegistrationPage() {
 
   function removeMember(index: number) {
     setMembers((current) => current.filter((_, memberIndex) => memberIndex !== index));
+  }
+
+  function addMember() {
+    setMembers((current) => (current.length >= additionalMemberLimit ? current : [...current, emptyMember()]));
   }
 
   async function submit(eventForm: FormEvent<HTMLFormElement>) {
@@ -308,9 +316,9 @@ export function RegistrationPage() {
                 ))}
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm font-bold text-ink/60">
-                    Terisi {totalMembers} dari maksimal {rules.maxTeamMembers} peserta. Minimal {rules.minTeamMembers} peserta termasuk ketua.
+                    Terisi {totalMembers} dari maksimal {rules.maxTeamMembers} peserta. Slot anggota {members.length}/{additionalMemberLimit}.
                   </p>
-                  <button type="button" className="btn-secondary" disabled={!canAddMember} onClick={() => setMembers((current) => [...current, emptyMember()])}>
+                  <button type="button" className="btn-secondary" disabled={!canAddMember} onClick={addMember}>
                     <UserPlus size={18} />
                     Tambah Anggota
                   </button>
