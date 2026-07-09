@@ -355,12 +355,12 @@ export function AdminPanel() {
   }
 
   return (
-    <section className="py-8">
+    <section className="py-6 sm:py-8">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-bold text-ink/55">Admin Panel</p>
-            <h1 className="text-3xl font-black">{event?.name ?? "Event belum dimuat"}</h1>
+            <h1 className="break-words text-2xl font-black sm:text-3xl">{event?.name ?? "Event belum dimuat"}</h1>
           </div>
           <div className="flex flex-wrap gap-2">
             <button className="btn-secondary" onClick={() => loadAdminData()} disabled={loading}>
@@ -384,9 +384,9 @@ export function AdminPanel() {
         {error ? <p className="mb-5 rounded-md bg-coral/10 px-4 py-3 text-sm font-bold text-coral">{error}</p> : null}
         {message ? <p className="mb-5 rounded-md bg-lagoon/10 px-4 py-3 text-sm font-bold text-lagoon">{message}</p> : null}
 
-        <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
-          <aside className="rounded-lg border border-ink/10 bg-white p-3 shadow-soft">
-            <nav className="grid gap-1">
+        <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <aside className="rounded-lg border border-ink/10 bg-white p-2 shadow-soft sm:p-3">
+            <nav className="grid gap-1 sm:grid-cols-2 lg:grid-cols-1">
               {tabs.map((item) => {
                 const Icon = item.icon;
                 return (
@@ -394,12 +394,12 @@ export function AdminPanel() {
                     key={item.id}
                     onClick={() => setTab(item.id)}
                     className={clsx(
-                      "flex items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-black transition",
+                      "flex min-w-0 items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-black transition",
                       tab === item.id ? "bg-ink text-white" : "text-ink/68 hover:bg-cloud hover:text-ink"
                     )}
                   >
-                    <Icon size={18} />
-                    {item.label}
+                    <Icon className="shrink-0" size={18} />
+                    <span className="truncate">{item.label}</span>
                   </button>
                 );
               })}
@@ -627,7 +627,7 @@ export function AdminPanel() {
 
             {tab === "submission" ? (
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-                <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                <div className="rounded-lg border border-ink/10 bg-white p-4 shadow-soft sm:p-5">
                   <h2 className="text-xl font-black">Rekap Submission</h2>
                   <TeamTable teams={teams} onVerify={verify} onDetail={openTeamDetail} loading={loading} compact />
                 </div>
@@ -766,7 +766,7 @@ function TextField({
 function TeamDetailPanel({ detail, onClose }: { detail: TeamDetail | null; onClose: () => void }) {
   if (!detail) {
     return (
-      <article className="rounded-lg border border-dashed border-ink/20 bg-white p-6 text-center shadow-soft">
+      <article className="min-w-0 rounded-lg border border-dashed border-ink/20 bg-white p-6 text-center shadow-soft">
         <Eye className="mx-auto text-ink/35" size={28} />
         <p className="mt-3 font-black">Pilih tim untuk melihat detail.</p>
         <p className="mt-2 text-sm text-ink/60">Detail memuat data anggota, kontak, status, dan submission.</p>
@@ -775,14 +775,14 @@ function TeamDetailPanel({ detail, onClose }: { detail: TeamDetail | null; onClo
   }
 
   return (
-    <article className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+    <article className="min-w-0 rounded-lg border border-ink/10 bg-white p-4 shadow-soft sm:p-5">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <StatusPill tone={detail.team.verificationStatus === "verified" ? "teal" : detail.team.verificationStatus === "rejected" ? "coral" : "amber"}>
             {detail.team.verificationStatus}
           </StatusPill>
-          <h2 className="mt-4 text-xl font-black">{detail.team.name}</h2>
-          <p className="mt-1 text-sm text-ink/60">{detail.category.name}</p>
+          <h2 className="mt-4 break-words text-xl font-black">{detail.team.name}</h2>
+          <p className="mt-1 break-words text-sm text-ink/60">{detail.category.name}</p>
         </div>
         <button type="button" className="btn-secondary px-3 py-2" onClick={onClose} aria-label="Tutup detail tim">
           <X size={16} />
@@ -860,63 +860,106 @@ function TeamTable({
   compact?: boolean;
 }) {
   return (
-    <div className="mt-5 overflow-x-auto">
-      <table className="w-full min-w-[900px] text-left text-sm">
-        <thead className="border-b border-ink/10 text-xs uppercase text-ink/45">
-          <tr>
-            <th className="py-3 pr-4">Tim</th>
-            <th className="py-3 pr-4">Kategori</th>
-            <th className="py-3 pr-4">Batch</th>
-            <th className="py-3 pr-4">Ketua</th>
-            <th className="py-3 pr-4">Status</th>
-            <th className="py-3 pr-4">Aksi</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-ink/10">
-          {teams.map((team) => (
-            <tr key={team.id}>
-              <td className="py-3 pr-4">
-                <p className="font-black">{team.name}</p>
-                <p className="text-xs text-ink/50">{team.institution}</p>
-              </td>
-              <td className="py-3 pr-4">{team.categoryName}</td>
-              <td className="py-3 pr-4">Batch {team.batch}</td>
-              <td className="py-3 pr-4">{team.leaderName}</td>
-              <td className="py-3 pr-4">
-                <StatusPill tone={team.verificationStatus === "verified" ? "teal" : team.verificationStatus === "rejected" ? "coral" : "amber"}>
-                  {team.verificationStatus}
-                </StatusPill>
-              </td>
-              <td className="py-3 pr-4">
-                <div className="flex flex-wrap gap-2">
-                  <button className="btn-secondary px-3 py-2" disabled={loading} onClick={() => onDetail(team.id)}>
-                    <Eye size={16} />
-                    Detail
+    <>
+      <div className="mt-5 divide-y divide-ink/10 rounded-md border border-ink/10 md:hidden">
+        {teams.map((team) => (
+          <article key={team.id} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="break-words font-black">{team.name}</p>
+                <p className="mt-1 break-words text-xs text-ink/50">{team.institution}</p>
+              </div>
+              <StatusPill tone={team.verificationStatus === "verified" ? "teal" : team.verificationStatus === "rejected" ? "coral" : "amber"}>
+                {team.verificationStatus}
+              </StatusPill>
+            </div>
+
+            <div className="mt-4 grid gap-2 text-sm text-ink/70">
+              <Info label="Kategori" value={team.categoryName} />
+              <Info label="Batch" value={`Batch ${team.batch}`} />
+              <Info label="Ketua" value={team.leaderName} />
+            </div>
+
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <button className="btn-secondary w-full px-3 py-2 sm:w-auto" disabled={loading} onClick={() => onDetail(team.id)}>
+                <Eye size={16} />
+                Detail
+              </button>
+              {!compact ? (
+                <>
+                  <button className="btn-secondary w-full px-3 py-2 sm:w-auto" disabled={loading} onClick={() => onVerify(team.id, "verified")}>
+                    <CheckCircle2 size={16} />
+                    Verifikasi
                   </button>
-                  {!compact ? (
-                    <>
-                      <button className="btn-secondary px-3 py-2" disabled={loading} onClick={() => onVerify(team.id, "verified")}>
-                        <CheckCircle2 size={16} />
-                        Verifikasi
-                      </button>
-                      <button className="btn-secondary px-3 py-2" disabled={loading} onClick={() => onVerify(team.id, "rejected")}>
-                        Tolak
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-              </td>
-            </tr>
-          ))}
-          {!teams.length ? (
+                  <button className="btn-secondary w-full px-3 py-2 sm:w-auto" disabled={loading} onClick={() => onVerify(team.id, "rejected")}>
+                    Tolak
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </article>
+        ))}
+        {!teams.length ? <p className="p-6 text-center text-sm text-ink/60">Belum ada peserta sesuai filter.</p> : null}
+      </div>
+
+      <div className="mt-5 hidden overflow-x-auto md:block">
+        <table className="w-full min-w-[760px] text-left text-sm lg:min-w-[900px]">
+          <thead className="border-b border-ink/10 text-xs uppercase text-ink/45">
             <tr>
-              <td className="py-8 text-center text-ink/60" colSpan={6}>
-                Belum ada peserta sesuai filter.
-              </td>
+              <th className="py-3 pr-4">Tim</th>
+              <th className="py-3 pr-4">Kategori</th>
+              <th className="py-3 pr-4">Batch</th>
+              <th className="py-3 pr-4">Ketua</th>
+              <th className="py-3 pr-4">Status</th>
+              <th className="py-3 pr-4">Aksi</th>
             </tr>
-          ) : null}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody className="divide-y divide-ink/10">
+            {teams.map((team) => (
+              <tr key={team.id}>
+                <td className="py-3 pr-4">
+                  <p className="font-black">{team.name}</p>
+                  <p className="text-xs text-ink/50">{team.institution}</p>
+                </td>
+                <td className="py-3 pr-4">{team.categoryName}</td>
+                <td className="py-3 pr-4">Batch {team.batch}</td>
+                <td className="py-3 pr-4">{team.leaderName}</td>
+                <td className="py-3 pr-4">
+                  <StatusPill tone={team.verificationStatus === "verified" ? "teal" : team.verificationStatus === "rejected" ? "coral" : "amber"}>
+                    {team.verificationStatus}
+                  </StatusPill>
+                </td>
+                <td className="py-3 pr-4">
+                  <div className="flex flex-wrap gap-2">
+                    <button className="btn-secondary px-3 py-2" disabled={loading} onClick={() => onDetail(team.id)}>
+                      <Eye size={16} />
+                      Detail
+                    </button>
+                    {!compact ? (
+                      <>
+                        <button className="btn-secondary px-3 py-2" disabled={loading} onClick={() => onVerify(team.id, "verified")}>
+                          <CheckCircle2 size={16} />
+                          Verifikasi
+                        </button>
+                        <button className="btn-secondary px-3 py-2" disabled={loading} onClick={() => onVerify(team.id, "rejected")}>
+                          Tolak
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {!teams.length ? (
+              <tr>
+                <td className="py-8 text-center text-ink/60" colSpan={6}>
+                  Belum ada peserta sesuai filter.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
