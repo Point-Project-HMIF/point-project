@@ -98,24 +98,6 @@ const emptyFAQForm = (eventId = "", sortOrder = 1): FAQPayload => ({
   isPublished: true
 });
 
-const faqTemplates = [
-  {
-    label: "Minimal peserta",
-    question: "Jumlah minimal peserta per tim",
-    answer: "Minimal 2 peserta dalam satu tim."
-  },
-  {
-    label: "Maksimal peserta",
-    question: "Jumlah maksimal peserta per tim",
-    answer: "Maksimal 3 peserta dalam satu tim."
-  },
-  {
-    label: "Aturan tambahan",
-    question: "Template aturan tambahan",
-    answer: "Admin atau panitia dapat menambahkan aturan lain sesuai kebutuhan event aktif."
-  }
-];
-
 export function AdminPanel() {
   const [token, setToken] = useState(localStorage.getItem("pointproject.adminToken") ?? "");
   const [user, setUser] = useState<AdminUser | null>(() => {
@@ -1099,71 +1081,47 @@ export function AdminPanel() {
 
                 <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
                   <form onSubmit={saveFAQ} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
-                  <h2 className="text-xl font-black">{editingFaqId ? "Edit FAQ" : "Tambah FAQ / Aturan"}</h2>
-                  <div className="mt-5 grid gap-4">
-                    <div>
-                      <p className="label">Template cepat</p>
-                      <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
-                        {faqTemplates.map((template) => (
-                          <button
-                            key={template.label}
-                            type="button"
-                            className="btn-secondary justify-start px-3 py-2 text-left"
-                            onClick={() =>
-                              setFaqForm((current) => ({
-                                ...current,
-                                eventId: event?.id ?? current.eventId,
-                                question: template.question,
-                                answer: template.answer,
-                                sortOrder: current.sortOrder || faqs.length + 1,
-                                isPublished: true
-                              }))
-                            }
-                          >
-                            {template.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <TextField
-                      label="Pertanyaan"
-                      value={faqForm.question}
-                      onChange={(value) => setFaqForm((current) => ({ ...current, question: value }))}
-                      placeholder="Contoh: Berapa jumlah anggota dalam satu tim?"
-                    />
-                    <TextAreaField
-                      label="Jawaban / Aturan"
-                      value={faqForm.answer}
-                      onChange={(value) => setFaqForm((current) => ({ ...current, answer: value }))}
-                      placeholder="Tulis aturan atau jawaban yang akan tampil di landing page."
-                    />
-                    <TextField
-                      label="Urutan"
-                      type="number"
-                      value={String(faqForm.sortOrder)}
-                      onChange={(value) => setFaqForm((current) => ({ ...current, sortOrder: Number(value) }))}
-                    />
-                    <label className="flex items-center gap-3 rounded-md bg-cloud px-4 py-3 text-sm font-bold">
-                      <input
-                        type="checkbox"
-                        checked={faqForm.isPublished}
-                        onChange={(event) => setFaqForm((current) => ({ ...current, isPublished: event.target.checked }))}
+                    <h2 className="text-xl font-black">{editingFaqId ? "Edit FAQ" : "Tambah FAQ / Aturan"}</h2>
+                    <div className="mt-5 grid gap-4">
+                      <TextField
+                        label="Pertanyaan"
+                        value={faqForm.question}
+                        onChange={(value) => setFaqForm((current) => ({ ...current, question: value }))}
+                        placeholder="Contoh: Berapa jumlah anggota dalam satu tim?"
                       />
-                      Tampilkan di halaman publik
-                    </label>
-                  </div>
-                  <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-                    {editingFaqId ? (
-                      <button type="button" className="btn-secondary" onClick={cancelFAQEdit} disabled={loading}>
-                        Batal
+                      <TextAreaField
+                        label="Jawaban / Aturan"
+                        value={faqForm.answer}
+                        onChange={(value) => setFaqForm((current) => ({ ...current, answer: value }))}
+                        placeholder="Tulis aturan atau jawaban yang akan tampil di landing page."
+                      />
+                      <TextField
+                        label="Urutan"
+                        type="number"
+                        value={String(faqForm.sortOrder)}
+                        onChange={(value) => setFaqForm((current) => ({ ...current, sortOrder: Number(value) }))}
+                      />
+                      <label className="flex items-center gap-3 rounded-md bg-cloud px-4 py-3 text-sm font-bold">
+                        <input
+                          type="checkbox"
+                          checked={faqForm.isPublished}
+                          onChange={(event) => setFaqForm((current) => ({ ...current, isPublished: event.target.checked }))}
+                        />
+                        Tampilkan di halaman publik
+                      </label>
+                    </div>
+                    <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                      {editingFaqId ? (
+                        <button type="button" className="btn-secondary" onClick={cancelFAQEdit} disabled={loading}>
+                          Batal
+                        </button>
+                      ) : null}
+                      <button className="btn-primary" disabled={loading || !event}>
+                        <Save size={18} />
+                        {editingFaqId ? "Simpan Perubahan" : "Tambah FAQ"}
                       </button>
-                    ) : null}
-                    <button className="btn-primary" disabled={loading || !event}>
-                      <Save size={18} />
-                      {editingFaqId ? "Simpan Perubahan" : "Tambah FAQ"}
-                    </button>
-                  </div>
-                </form>
+                    </div>
+                  </form>
 
                 <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

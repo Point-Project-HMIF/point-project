@@ -148,19 +148,32 @@ export function HomePage() {
             title={`Jadwal ${eventName}`}
             body="Tahapan disusun agar peserta dapat mengikuti proses pendaftaran, pengumpulan karya, seleksi, dan final dengan jelas."
           />
-          <div className="mt-10 grid gap-4 md:grid-cols-5">
-            {timeline.map((item) => (
-              <article key={item.id} className="relative rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
-                <span className="grid h-9 w-9 place-items-center rounded-md bg-lagoon text-sm font-black text-white">
-                  {item.sortOrder}
-                </span>
-                <h3 className="mt-4 text-base font-black">{item.label}</h3>
-                <p className="mt-2 text-xs font-bold text-coral">
-                  {item.startDate} - {item.endDate}
-                </p>
-                <p className="mt-3 text-sm leading-6 text-ink/65">{item.description}</p>
+          <div className="mt-10 overflow-x-auto pb-3">
+            <ol className="flex min-w-max">
+              {timeline.map((item, index) => (
+                <li key={item.id} className="w-[270px] shrink-0 pr-5 last:pr-0 sm:w-[300px]">
+                  <div className="flex items-center">
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border-4 border-white bg-lagoon text-sm font-black text-white shadow-soft">
+                      {item.sortOrder}
+                    </span>
+                    {index < timeline.length - 1 ? <span className="h-0.5 flex-1 bg-ink/10" /> : null}
+                  </div>
+                  <article className="mt-5 rounded-lg border border-ink/10 bg-white p-4 shadow-soft">
+                    <p className="text-xs font-black uppercase tracking-wide text-coral">
+                      {item.startDate} - {item.endDate}
+                    </p>
+                    <h3 className="mt-3 break-words text-base font-black">{item.label}</h3>
+                    <p className="mt-2 text-sm leading-6 text-ink/65">{item.description}</p>
+                  </article>
+                </li>
+              ))}
+            </ol>
+            {!timeline.length ? (
+              <article className="rounded-lg border border-dashed border-ink/20 bg-white p-8 text-center">
+                <p className="font-black">Timeline belum tersedia.</p>
+                <p className="mt-2 text-sm text-ink/60">Jadwal akan tampil setelah admin mengatur tahapan event.</p>
               </article>
-            ))}
+            ) : null}
           </div>
         </div>
       </section>
