@@ -1,0 +1,168 @@
+export type Event = {
+  id: string;
+  name: string;
+  theme: string;
+  year: number;
+  startDate: string;
+  endDate: string;
+  status: "draft" | "aktif" | "arsip" | string;
+};
+
+export type Category = {
+  id: string;
+  eventId: string;
+  name: string;
+  description: string;
+  requirements: string[];
+};
+
+export type TimelineItem = {
+  id: string;
+  eventId: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  description: string;
+  sortOrder: number;
+};
+
+export type TimelineItemInput = {
+  id?: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  description: string;
+  sortOrder: number;
+};
+
+export type CommitteeMember = {
+  id: string;
+  eventId: string;
+  name: string;
+  identity: string;
+  position: string;
+  division: string;
+};
+
+export type TeamMember = {
+  name: string;
+  email: string;
+  role: string;
+};
+
+export type Team = {
+  id: string;
+  eventId: string;
+  categoryId: string;
+  categoryName: string;
+  name: string;
+  batch: number;
+  leaderName: string;
+  leaderEmail: string;
+  leaderPhone: string;
+  institution: string;
+  members: TeamMember[];
+  verificationStatus: string;
+  createdAt: string;
+};
+
+export type RegistrationPayload = {
+  eventId: string;
+  categoryId: string;
+  name: string;
+  batch: number;
+  leaderName: string;
+  leaderEmail: string;
+  leaderPhone: string;
+  institution: string;
+  members: TeamMember[];
+  proposalUrl: string;
+  prototypeUrl: string;
+};
+
+export type Submission = {
+  id: string;
+  teamId: string;
+  stage: string;
+  proposalUrl: string;
+  prototypeUrl: string;
+  pptUrl: string;
+  reportUrl: string;
+  posterUrl: string;
+  status: string;
+  submittedAt: string;
+};
+
+export type SubmissionPayload = {
+  stage: string;
+  proposalUrl?: string;
+  prototypeUrl?: string;
+  pptUrl?: string;
+  reportUrl?: string;
+  posterUrl?: string;
+};
+
+export type AnnouncementResult = {
+  rank: number;
+  teamName: string;
+  categoryName: string;
+  institution: string;
+  workTitle: string;
+  prototypeUrl: string;
+};
+
+export type Announcement = {
+  id: string;
+  eventId: string;
+  type: "finalis" | "pemenang" | "info" | string;
+  title: string;
+  body: string;
+  publishedAt: string;
+  results: AnnouncementResult[];
+};
+
+export type ParticipantDashboard = {
+  event: Event;
+  category: Category;
+  team: Team;
+  submissions: Submission[];
+  announcements: Announcement[];
+};
+
+export type TeamDetail = {
+  event: Event;
+  category: Category;
+  team: Team;
+  submissions: Submission[];
+};
+
+export type AdminUser = {
+  id: string;
+  name: string;
+  nim: string;
+  email: string;
+  role: string;
+  division: string;
+};
+
+export type CreateAdminUserPayload = {
+  name: string;
+  nim: string;
+  role: string;
+  division: string;
+  password: string;
+};
+
+export type AdminStats = {
+  events: number;
+  teams: number;
+  pending: number;
+  submissions: number;
+  finalists: number;
+  winners: number;
+};
+
+export type LoginResponse = {
+  token: string;
+  user: AdminUser;
+};

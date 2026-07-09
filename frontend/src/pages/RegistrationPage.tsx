@@ -1,0 +1,394 @@
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Check, ChevronLeft, ChevronRight, Send, Trash2, UserPlus } from "lucide-react";
+import clsx from "clsx";
+import { SectionHeading, StatusPill } from "../components/Layout";
+import { api } from "../lib/api";
+import type { Category, Event, RegistrationPayload, Team, TeamMember } from "../lib/types";
+
+const steps = ["Data Tim", "Anggota", "Kategori", "Upload"];
+
+const emptyMember = (): TeamMember => ({ name: "", email: "", role: "" });
+
+export function RegistrationPage() {
+  const [event, setEvent] = useState<Event | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [step, setStep] = useState(0);
+  const [members, setMembers] = useState<TeamMember[]>([emptyMember(), emptyMember()]);
+  const [form, setForm] = useState<RegistrationPayload>({
+    eventId: "",
+    categoryId: "",
+    name: "",
+    batch: 1,
+    leaderName: "",
+    leaderEmail: "",
+    leaderPhone: "",
+    institution: "",
+    members: [],
+    proposalUrl: "",
+    prototypeUrl: ""
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [createdTeam, setCreatedTeam] = useState<Team | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .activeEvent()
+      .then(async (active) => {
+        const nextCategories = await api.categories(active.id);
+        if (!alive) return;
+        setEvent(active);
+        setCategories(nextCategories);
+        setForm((current) => ({
+          ...current,
+          eventId: active.id,
+          categoryId: nextCategories[0]?.id ?? ""
+        }));
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setError(err instanceof Error ? err.message : "Gagal memuat data event dari server.");
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const selectedCategory = useMemo(
+    () => categories.find((category) => category.id === form.categoryId) ?? categories[0],
+    [categories, form.categoryId]
+  );
+
+  function updateField<K extends keyof RegistrationPayload>(key: K, value: RegistrationPayload[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateMember(index: number, key: keyof TeamMember, value: string) {
+    setMembers((current) =>
+      current.map((member, memberIndex) => (memberIndex === index ? { ...member, [key]: value } : member))
+    );
+  }
+
+  function removeMember(index: number) {
+    setMembers((current) => current.filter((_, memberIndex) => memberIndex !== index));
+  }
+
+  async function submit(eventForm: FormEvent<HTMLFormElement>) {
+    eventForm.preventDefault();
+    setError("");
+    if (!form.eventId || !form.categoryId || !form.name || !form.leaderName || !form.leaderEmail || !form.institution) {
+      setError("Event, kategori, data tim, ketua, email, dan asal instansi wajib diisi.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const team = await api.register({
+        ...form,
+        members: members.filter((member) => member.name.trim() !== "")
+      });
+      localStorage.setItem("pointproject.teamId", team.id);
+      setCreatedTeam(team);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Pendaftaran gagal dikirim.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (createdTeam) {
+    return (
+      <section className="py-16">
+        <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+          <div className="rounded-lg border border-lagoon/20 bg-white p-8 text-center shadow-soft">
+            <span className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-lagoon text-white">
+              <Check size={28} />
+            </span>
+            <h1 className="mt-6 text-3xl font-black">Pendaftaran terkirim</h1>
+            <p className="mt-3 text-ink/65">
+              ID tim kamu adalah <span className="font-black text-ink">{createdTeam.id}</span>. Simpan ID ini untuk
+              membuka dashboard peserta.
+            </p>
+            <div className="mt-6 flex justify-center">
+              <a href="/dashboard" className="btn-primary">
+                Buka Dashboard
+                <ChevronRight size={18} />
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="py-14">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        <SectionHeading
+          eyebrow="Pendaftaran"
+          title={`Daftar ${event?.name ?? "Point Project"}`}
+          body="Isi data tim, anggota, kategori, dan tautan karya awal. Panitia akan memverifikasi data melalui dashboard admin."
+        />
+
+        <div className="mt-10 grid gap-8 lg:grid-cols-[0.7fr_1.3fr]">
+          <aside className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+            <StatusPill tone="teal">Batch {form.batch}</StatusPill>
+            <h2 className="mt-4 text-xl font-black">Progress Form</h2>
+            <div className="mt-5 space-y-3">
+              {steps.map((label, index) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setStep(index)}
+                  className={clsx(
+                    "flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-bold transition",
+                    step === index ? "bg-ink text-white" : "bg-cloud text-ink/70 hover:bg-lagoon/10"
+                  )}
+                >
+                  <span
+                    className={clsx(
+                      "grid h-7 w-7 shrink-0 place-items-center rounded-md text-xs",
+                      step === index ? "bg-mint text-ink" : "bg-white text-ink"
+                    )}
+                  >
+                    {index + 1}
+                  </span>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          <form onSubmit={submit} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft sm:p-7">
+            {error ? <p className="mb-5 rounded-md bg-coral/10 px-4 py-3 text-sm font-bold text-coral">{error}</p> : null}
+
+            {step === 0 ? (
+              <div className="grid gap-5 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <label className="label" htmlFor="team-name">
+                    Nama Tim
+                  </label>
+                  <input
+                    id="team-name"
+                    className="field"
+                    value={form.name}
+                    onChange={(event) => updateField("name", event.target.value)}
+                    placeholder="Nama tim"
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="leader-name">
+                    Nama Ketua
+                  </label>
+                  <input
+                    id="leader-name"
+                    className="field"
+                    value={form.leaderName}
+                    onChange={(event) => updateField("leaderName", event.target.value)}
+                    placeholder="Nama lengkap ketua"
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="leader-email">
+                    Email Ketua
+                  </label>
+                  <input
+                    id="leader-email"
+                    className="field"
+                    type="email"
+                    value={form.leaderEmail}
+                    onChange={(event) => updateField("leaderEmail", event.target.value)}
+                    placeholder="nama@email.com"
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="leader-phone">
+                    Nomor WhatsApp
+                  </label>
+                  <input
+                    id="leader-phone"
+                    className="field"
+                    value={form.leaderPhone}
+                    onChange={(event) => updateField("leaderPhone", event.target.value)}
+                    placeholder="08xxxxxxxxxx"
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="institution">
+                    Asal Sekolah/Kampus
+                  </label>
+                  <input
+                    id="institution"
+                    className="field"
+                    value={form.institution}
+                    onChange={(event) => updateField("institution", event.target.value)}
+                    placeholder="Institut Teknologi Sumatera"
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {step === 1 ? (
+              <div className="space-y-5">
+                {members.map((member, index) => (
+                  <div key={index} className="rounded-lg border border-ink/10 bg-cloud p-4">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <p className="text-sm font-black">Anggota {index + 1}</p>
+                      <button
+                        type="button"
+                        className="btn-secondary px-3 py-2"
+                        onClick={() => removeMember(index)}
+                        aria-label={`Hapus anggota ${index + 1}`}
+                      >
+                        <Trash2 size={16} />
+                        Hapus
+                      </button>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <label className="label" htmlFor={`member-name-${index}`}>
+                        Nama Anggota {index + 1}
+                      </label>
+                      <input
+                        id={`member-name-${index}`}
+                        className="field"
+                        value={member.name}
+                        onChange={(event) => updateMember(index, "name", event.target.value)}
+                        placeholder="Nama lengkap"
+                      />
+                    </div>
+                    <div>
+                      <label className="label" htmlFor={`member-email-${index}`}>
+                        Email
+                      </label>
+                      <input
+                        id={`member-email-${index}`}
+                        className="field"
+                        type="email"
+                        value={member.email}
+                        onChange={(event) => updateMember(index, "email", event.target.value)}
+                        placeholder="anggota@email.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="label" htmlFor={`member-role-${index}`}>
+                        Peran
+                      </label>
+                      <input
+                        id={`member-role-${index}`}
+                        className="field"
+                        value={member.role}
+                        onChange={(event) => updateMember(index, "role", event.target.value)}
+                        placeholder="UI Designer"
+                      />
+                    </div>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" className="btn-secondary" onClick={() => setMembers((current) => [...current, emptyMember()])}>
+                  <UserPlus size={18} />
+                  Tambah Anggota
+                </button>
+              </div>
+            ) : null}
+
+            {step === 2 ? (
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <label className="label" htmlFor="batch">
+                    Batch Pendaftaran
+                  </label>
+                  <select
+                    id="batch"
+                    className="field"
+                    value={form.batch}
+                    onChange={(event) => updateField("batch", Number(event.target.value))}
+                  >
+                    <option value={1}>Batch 1</option>
+                    <option value={2}>Batch 2</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label" htmlFor="category">
+                    Kategori Lomba
+                  </label>
+                  <select
+                    id="category"
+                    className="field"
+                    value={form.categoryId}
+                    onChange={(event) => updateField("categoryId", event.target.value)}
+                  >
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="rounded-lg border border-ink/10 bg-cloud p-5 md:col-span-2">
+                  <h3 className="font-black">{selectedCategory?.name}</h3>
+                  <p className="mt-2 text-sm text-ink/65">{selectedCategory?.description}</p>
+                  <ul className="mt-4 grid gap-2">
+                    {selectedCategory?.requirements.map((item) => (
+                      <li key={item} className="flex gap-2 text-sm text-ink/70">
+                        <Check className="mt-0.5 text-lagoon" size={16} />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : null}
+
+            {step === 3 ? (
+              <div className="grid gap-5">
+                <div>
+                  <label className="label" htmlFor="proposal">
+                    Link Proposal
+                  </label>
+                  <input
+                    id="proposal"
+                    className="field"
+                    value={form.proposalUrl}
+                    onChange={(event) => updateField("proposalUrl", event.target.value)}
+                    placeholder="https://drive.google.com/..."
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="prototype">
+                    Link Prototype
+                  </label>
+                  <input
+                    id="prototype"
+                    className="field"
+                    value={form.prototypeUrl}
+                    onChange={(event) => updateField("prototypeUrl", event.target.value)}
+                    placeholder="https://figma.com/..."
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-8 flex flex-col-reverse gap-3 border-t border-ink/10 pt-5 sm:flex-row sm:justify-between">
+              <button type="button" className="btn-secondary" disabled={step === 0} onClick={() => setStep((current) => current - 1)}>
+                <ChevronLeft size={18} />
+                Kembali
+              </button>
+              {step < steps.length - 1 ? (
+                <button type="button" className="btn-primary" onClick={() => setStep((current) => current + 1)}>
+                  Lanjut
+                  <ChevronRight size={18} />
+                </button>
+              ) : (
+                <button type="submit" className="btn-primary" disabled={loading}>
+                  <Send size={18} />
+                  {loading ? "Mengirim..." : "Kirim Pendaftaran"}
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+  );
+}
