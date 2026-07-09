@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -20,6 +21,8 @@ import (
 type PostgresStore struct {
 	db *pgxpool.Pool
 }
+
+var whatsappPattern = regexp.MustCompile(`^\+628[0-9]{8,11}$`)
 
 func NewPostgresStore(db *pgxpool.Pool) *PostgresStore {
 	return &PostgresStore{db: db}
@@ -547,6 +550,55 @@ func scanAnnouncement(row interface{ Scan(dest ...any) error }) (models.Announce
 	return announcement, nil
 }
 
+func (s *PostgresStore) CreateRegistrationOTP(ctx context.Context, email, code string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	code = strings.TrimSpace(code)
+	if email == "" || code == "" {
+		return errors.New("email dan kode OTP wajib diisi")
+	}
+
+	var recentRequests int
+	if err := s.db.QueryRow(ctx, `
+		select count(*)
+		from registration_otps
+		where lower(email) = lower($1)
+		  and created_at > now() - interval '60 seconds'
+	`, email).Scan(&recentRequests); err != nil {
+		return err
+	}
+	if recentRequests > 0 {
+		return errors.New("kode OTP baru bisa diminta lagi setelah 60 detik")
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `
+		update registration_otps
+		set consumed_at = now()
+		where lower(email) = lower($1)
+		  and consumed_at is null
+	`, email); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into registration_otps (email, code_hash, expires_at)
+		values ($1, $2, now() + interval '10 minutes')
+	`, email, string(hash)); err != nil {
+		return err
+	}
+	_, _ = tx.Exec(ctx, `delete from registration_otps where expires_at < now() - interval '1 day'`)
+	return tx.Commit(ctx)
+}
+
 func (s *PostgresStore) CreateTeam(ctx context.Context, input models.RegistrationRequest) (models.Team, error) {
 	eventID := input.EventID
 	if eventID == "" {
@@ -569,6 +621,15 @@ func (s *PostgresStore) CreateTeam(ctx context.Context, input models.Registratio
 		categoryID = categories[0].ID
 	}
 	category, err := s.GetCategory(ctx, categoryID)
+	if err != nil {
+		return models.Team{}, err
+	}
+	if category.EventID != eventID {
+		return models.Team{}, errors.New("kategori tidak sesuai dengan event")
+	}
+
+	input.LeaderEmail = strings.ToLower(strings.TrimSpace(input.LeaderEmail))
+	input.LeaderPhone, err = normalizeWhatsAppNumber(input.LeaderPhone)
 	if err != nil {
 		return models.Team{}, err
 	}
@@ -600,6 +661,10 @@ func (s *PostgresStore) CreateTeam(ctx context.Context, input models.Registratio
 		return models.Team{}, err
 	}
 	defer tx.Rollback(ctx)
+
+	if err := verifyRegistrationOTP(ctx, tx, input.LeaderEmail, input.OTPCode); err != nil {
+		return models.Team{}, err
+	}
 
 	var team models.Team
 	var created time.Time
@@ -1088,6 +1153,76 @@ func (s *PostgresStore) CreateSubmission(ctx context.Context, teamID string, inp
 	}
 	submission.SubmittedAt = submitted.Format(time.RFC3339)
 	return submission, nil
+}
+
+func verifyRegistrationOTP(ctx context.Context, tx pgx.Tx, email, code string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	code = strings.TrimSpace(code)
+	if email == "" || code == "" {
+		return errors.New("kode OTP email wajib diisi")
+	}
+
+	var id, hash string
+	var attempts int
+	var expiresAt time.Time
+	err := tx.QueryRow(ctx, `
+		select id::text, code_hash, attempts, expires_at
+		from registration_otps
+		where lower(email) = lower($1)
+		  and consumed_at is null
+		order by created_at desc
+		limit 1
+		for update
+	`, email).Scan(&id, &hash, &attempts, &expiresAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return errors.New("kode OTP tidak ditemukan atau sudah digunakan")
+	}
+	if err != nil {
+		return err
+	}
+	if time.Now().After(expiresAt) {
+		return errors.New("kode OTP sudah kedaluwarsa, minta kode baru")
+	}
+	if attempts >= 5 {
+		return errors.New("kode OTP terlalu sering salah, minta kode baru")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(code)); err != nil {
+		_, _ = tx.Exec(ctx, `update registration_otps set attempts = attempts + 1 where id = $1`, id)
+		return errors.New("kode OTP tidak valid")
+	}
+	_, err = tx.Exec(ctx, `update registration_otps set consumed_at = now() where id = $1`, id)
+	return err
+}
+
+func normalizeWhatsAppNumber(value string) (string, error) {
+	digits := strings.Builder{}
+	for index, r := range strings.TrimSpace(value) {
+		if r >= '0' && r <= '9' {
+			digits.WriteRune(r)
+			continue
+		}
+		if r == '+' && index == 0 {
+			continue
+		}
+		if r == ' ' || r == '-' || r == '(' || r == ')' || r == '.' {
+			continue
+		}
+		return "", errors.New("nomor WhatsApp hanya boleh berisi angka, spasi, tanda +, dan tanda -")
+	}
+
+	number := digits.String()
+	switch {
+	case strings.HasPrefix(number, "08"):
+		number = "+62" + number[1:]
+	case strings.HasPrefix(number, "628"):
+		number = "+" + number
+	default:
+		return "", errors.New("nomor WhatsApp wajib memakai format Indonesia, contoh 08xxxxxxxxxx atau +628xxxxxxxxxx")
+	}
+	if !whatsappPattern.MatchString(number) {
+		return "", errors.New("nomor WhatsApp tidak valid, gunakan nomor Indonesia aktif seperti 08xxxxxxxxxx")
+	}
+	return number, nil
 }
 
 func (s *PostgresStore) FindAdminByEmail(ctx context.Context, email string) (models.AdminAccount, error) {

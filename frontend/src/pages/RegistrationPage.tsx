@@ -29,9 +29,12 @@ export function RegistrationPage() {
     institution: "",
     members: [],
     proposalUrl: "",
-    prototypeUrl: ""
+    prototypeUrl: "",
+    otpCode: ""
   });
   const [loading, setLoading] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpMessage, setOtpMessage] = useState("");
   const [error, setError] = useState("");
   const [createdTeam, setCreatedTeam] = useState<Team | null>(null);
 
@@ -71,7 +74,10 @@ export function RegistrationPage() {
   const canAddMember = members.length < additionalMemberLimit;
 
   function updateField<K extends keyof RegistrationPayload>(key: K, value: RegistrationPayload[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => ({ ...current, [key]: value, ...(key === "leaderEmail" ? { otpCode: "" } : {}) }));
+    if (key === "leaderEmail") {
+      setOtpMessage("");
+    }
   }
 
   function updateMember(index: number, key: keyof TeamMember, value: string) {
@@ -88,11 +94,56 @@ export function RegistrationPage() {
     setMembers((current) => (current.length >= additionalMemberLimit ? current : [...current, emptyMember()]));
   }
 
+  function goNext() {
+    setError("");
+    if (step === 0) {
+      if (!form.name || !form.leaderName || !form.leaderEmail || !form.leaderPhone || !form.institution) {
+        setError("Data tim, ketua, email, WhatsApp, dan asal instansi wajib diisi.");
+        return;
+      }
+      if (!isValidWhatsAppNumber(form.leaderPhone)) {
+        setError("Nomor WhatsApp tidak valid. Gunakan format 08xxxxxxxxxx atau +628xxxxxxxxxx.");
+        return;
+      }
+    }
+    setStep((current) => current + 1);
+  }
+
+  async function requestOTP() {
+    setError("");
+    setOtpMessage("");
+    if (!form.leaderName || !form.leaderEmail) {
+      setError("Nama dan email ketua wajib diisi sebelum meminta OTP.");
+      return;
+    }
+    setOtpSending(true);
+    try {
+      const response = await api.requestRegistrationOTP({
+        leaderName: form.leaderName,
+        leaderEmail: form.leaderEmail
+      });
+      setOtpMessage(response.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengirim OTP.");
+    } finally {
+      setOtpSending(false);
+    }
+  }
+
   async function submit(eventForm: FormEvent<HTMLFormElement>) {
     eventForm.preventDefault();
     setError("");
-    if (!form.eventId || !form.categoryId || !form.name || !form.leaderName || !form.leaderEmail || !form.institution) {
-      setError("Event, kategori, data tim, ketua, email, dan asal instansi wajib diisi.");
+    if (!form.eventId || !form.categoryId || !form.name || !form.leaderName || !form.leaderEmail || !form.leaderPhone || !form.institution) {
+      setError("Event, kategori, data tim, ketua, email, WhatsApp, dan asal instansi wajib diisi.");
+      return;
+    }
+    const normalizedPhone = normalizeWhatsAppNumber(form.leaderPhone);
+    if (!normalizedPhone) {
+      setError("Nomor WhatsApp tidak valid. Gunakan format 08xxxxxxxxxx atau +628xxxxxxxxxx.");
+      return;
+    }
+    if (!form.otpCode.trim()) {
+      setError("Masukkan kode OTP yang dikirim ke email ketua.");
       return;
     }
     if (totalMembers < rules.minTeamMembers || totalMembers > rules.maxTeamMembers) {
@@ -103,6 +154,8 @@ export function RegistrationPage() {
     try {
       const team = await api.register({
         ...form,
+        leaderPhone: normalizedPhone,
+        otpCode: form.otpCode.trim(),
         members: filledMembers
       });
       localStorage.setItem("pointproject.teamId", team.id);
@@ -226,10 +279,14 @@ export function RegistrationPage() {
                   <input
                     id="leader-phone"
                     className="field"
+                    type="tel"
                     value={form.leaderPhone}
                     onChange={(event) => updateField("leaderPhone", event.target.value)}
-                    placeholder="08xxxxxxxxxx"
+                    placeholder="08xxxxxxxxxx atau +628xxxxxxxxxx"
                   />
+                  {form.leaderPhone && !isValidWhatsAppNumber(form.leaderPhone) ? (
+                    <p className="mt-2 text-xs font-bold text-coral">Gunakan nomor Indonesia, contoh 081234567890.</p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="label" htmlFor="institution">
@@ -400,6 +457,34 @@ export function RegistrationPage() {
                     placeholder="https://figma.com/..."
                   />
                 </div>
+                <div className="rounded-lg border border-lagoon/20 bg-lagoon/5 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="font-black">Verifikasi Email Ketua</h3>
+                      <p className="mt-1 text-sm leading-6 text-ink/65">
+                        Kode OTP akan dikirim ke {form.leaderEmail || "email ketua"} dan berlaku 10 menit.
+                      </p>
+                    </div>
+                    <button type="button" className="btn-secondary shrink-0" onClick={requestOTP} disabled={otpSending || loading}>
+                      {otpSending ? "Mengirim..." : "Kirim OTP"}
+                    </button>
+                  </div>
+                  {otpMessage ? <p className="mt-3 rounded-md bg-white px-3 py-2 text-sm font-bold text-lagoon">{otpMessage}</p> : null}
+                  <div className="mt-4 max-w-xs">
+                    <label className="label" htmlFor="otp-code">
+                      Kode OTP
+                    </label>
+                    <input
+                      id="otp-code"
+                      className="field text-center text-lg font-black tracking-[0.4em]"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={form.otpCode}
+                      onChange={(event) => updateField("otpCode", event.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="000000"
+                    />
+                  </div>
+                </div>
               </div>
             ) : null}
 
@@ -409,7 +494,7 @@ export function RegistrationPage() {
                 Kembali
               </button>
               {step < steps.length - 1 ? (
-                <button type="button" className="btn-primary" onClick={() => setStep((current) => current + 1)}>
+                <button type="button" className="btn-primary" onClick={goNext}>
                   Lanjut
                   <ChevronRight size={18} />
                 </button>
@@ -425,6 +510,23 @@ export function RegistrationPage() {
       </div>
     </section>
   );
+}
+
+function normalizeWhatsAppNumber(value: string) {
+  const raw = value.trim();
+  if (!raw) return "";
+  if (/[^0-9+\s().-]/.test(raw)) return "";
+  const digits = raw.replace(/\D/g, "");
+  const normalized = digits.startsWith("08")
+    ? `+62${digits.slice(1)}`
+    : digits.startsWith("628")
+      ? `+${digits}`
+      : "";
+  return /^\+628[0-9]{8,11}$/.test(normalized) ? normalized : "";
+}
+
+function isValidWhatsAppNumber(value: string) {
+  return Boolean(normalizeWhatsAppNumber(value));
 }
 
 function ReadOnlyField({ label, value }: { label: string; value: string }) {

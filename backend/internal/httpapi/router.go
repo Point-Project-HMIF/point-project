@@ -2,8 +2,13 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
+	"fmt"
+	"html"
+	"math/big"
 	"net/http"
+	"net/mail"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/resend/resend-go/v3"
 	"golang.org/x/crypto/bcrypt"
 
 	"pointproject/backend/internal/models"
@@ -20,13 +26,65 @@ import (
 type Server struct {
 	store     repository.Store
 	jwtSecret []byte
+	mailer    registrationMailer
+}
+
+type registrationMailer interface {
+	SendRegistrationOTP(ctx context.Context, to, name, code string) error
+}
+
+type resendRegistrationMailer struct {
+	client *resend.Client
+	from   string
 }
 
 type contextKey string
 
 const adminRoleContextKey contextKey = "adminRole"
 
-func NewRouter(store repository.Store, jwtSecret string, allowedOrigins []string) http.Handler {
+func newRegistrationMailer(apiKey, from string) registrationMailer {
+	apiKey = strings.TrimSpace(apiKey)
+	from = strings.TrimSpace(from)
+	if apiKey == "" || from == "" {
+		return nil
+	}
+	return &resendRegistrationMailer{
+		client: resend.NewClient(apiKey),
+		from:   from,
+	}
+}
+
+func (m *resendRegistrationMailer) SendRegistrationOTP(ctx context.Context, to, name, code string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "Peserta"
+	}
+	escapedName := html.EscapeString(name)
+	escapedCode := html.EscapeString(code)
+	params := &resend.SendEmailRequest{
+		From:    m.from,
+		To:      []string{to},
+		Subject: "Kode OTP Pendaftaran Point Project",
+		Text: fmt.Sprintf(
+			"Halo %s,\n\nKode OTP pendaftaran Point Project kamu adalah %s. Kode ini berlaku 10 menit dan hanya bisa digunakan sekali.\n\nJika kamu tidak meminta kode ini, abaikan email ini.",
+			name,
+			code,
+		),
+		Html: fmt.Sprintf(`
+			<div style="font-family:Arial,sans-serif;line-height:1.6;color:#101827">
+				<p>Halo <strong>%s</strong>,</p>
+				<p>Kode OTP pendaftaran Point Project kamu:</p>
+				<p style="font-size:28px;font-weight:800;letter-spacing:6px;margin:18px 0">%s</p>
+				<p>Kode ini berlaku 10 menit dan hanya bisa digunakan sekali.</p>
+				<p style="color:#6b7280;font-size:13px">Jika kamu tidak meminta kode ini, abaikan email ini.</p>
+			</div>
+		`, escapedName, escapedCode),
+	}
+	_, err := m.client.Emails.SendWithContext(ctx, params)
+	return err
+}
+
+func NewRouter(store repository.Store, jwtSecret string, allowedOrigins []string, resendAPIKey, resendFrom string) http.Handler {
 	if len(allowedOrigins) == 0 {
 		allowedOrigins = []string{"http://localhost:5173"}
 	}
@@ -34,6 +92,7 @@ func NewRouter(store repository.Store, jwtSecret string, allowedOrigins []string
 	server := &Server{
 		store:     store,
 		jwtSecret: []byte(jwtSecret),
+		mailer:    newRegistrationMailer(resendAPIKey, resendFrom),
 	}
 
 	r := chi.NewRouter()
@@ -58,6 +117,7 @@ func NewRouter(store repository.Store, jwtSecret string, allowedOrigins []string
 		r.Get("/events/{eventID}/rules", server.eventRules)
 		r.Get("/events/{eventID}/faqs", server.listFAQs)
 		r.Get("/events/{eventID}/announcements", server.listAnnouncements)
+		r.Post("/registrations/otp", server.requestRegistrationOTP)
 		r.Post("/registrations", server.createRegistration)
 		r.Get("/participants/{teamID}/dashboard", server.participantDashboard)
 		r.Post("/participants/{teamID}/submissions", server.createSubmission)
@@ -163,16 +223,56 @@ func (s *Server) listAnnouncements(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, announcements)
 }
 
+func (s *Server) requestRegistrationOTP(w http.ResponseWriter, r *http.Request) {
+	if s.mailer == nil {
+		writeMessage(w, http.StatusServiceUnavailable, "layanan email OTP belum dikonfigurasi")
+		return
+	}
+	var input models.RegistrationOTPRequest
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	email, err := normalizeEmail(input.LeaderEmail)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	code, err := generateOTPCode()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if err := s.store.CreateRegistrationOTP(r.Context(), email, code); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.mailer.SendRegistrationOTP(r.Context(), email, input.LeaderName, code); err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeData(w, http.StatusOK, models.RegistrationOTPResponse{
+		Message:   "Kode OTP dikirim ke email ketua.",
+		ExpiresIn: 600,
+	})
+}
+
 func (s *Server) createRegistration(w http.ResponseWriter, r *http.Request) {
 	var input models.RegistrationRequest
 	if err := decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.LeaderName) == "" || strings.TrimSpace(input.LeaderEmail) == "" || strings.TrimSpace(input.Institution) == "" {
-		writeMessage(w, http.StatusBadRequest, "nama tim, nama ketua, email ketua, dan asal instansi wajib diisi")
+	if strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.LeaderName) == "" || strings.TrimSpace(input.LeaderEmail) == "" || strings.TrimSpace(input.LeaderPhone) == "" || strings.TrimSpace(input.Institution) == "" {
+		writeMessage(w, http.StatusBadRequest, "nama tim, nama ketua, email ketua, WhatsApp, dan asal instansi wajib diisi")
 		return
 	}
+	email, err := normalizeEmail(input.LeaderEmail)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	input.LeaderEmail = email
 	team, err := s.store.CreateTeam(r.Context(), input)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -491,6 +591,26 @@ func requireSuperAdmin(w http.ResponseWriter, r *http.Request) bool {
 	}
 	writeMessage(w, http.StatusForbidden, "hanya super admin yang dapat mengelola event")
 	return false
+}
+
+func normalizeEmail(value string) (string, error) {
+	email := strings.ToLower(strings.TrimSpace(value))
+	if email == "" {
+		return "", fmt.Errorf("email wajib diisi")
+	}
+	address, err := mail.ParseAddress(email)
+	if err != nil || strings.ToLower(address.Address) != email {
+		return "", fmt.Errorf("format email tidak valid")
+	}
+	return email, nil
+}
+
+func generateOTPCode() (string, error) {
+	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%06d", n.Int64()), nil
 }
 
 func (s *Server) signAdminToken(user models.AdminUser) (string, error) {

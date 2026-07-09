@@ -133,6 +133,17 @@ export type RegistrationPayload = {
   members: TeamMember[];
   proposalUrl: string;
   prototypeUrl: string;
+  otpCode: string;
+};
+
+export type RegistrationOTPPayload = {
+  leaderName: string;
+  leaderEmail: string;
+};
+
+export type RegistrationOTPResponse = {
+  message: string;
+  expiresIn: number;
 };
 
 export type Submission = {

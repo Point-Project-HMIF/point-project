@@ -7,6 +7,7 @@ require (
 	github.com/go-chi/cors v1.2.2
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/jackc/pgx/v5 v5.7.6
+	github.com/resend/resend-go/v3 v3.10.1
 	golang.org/x/crypto v0.37.0
 )
 

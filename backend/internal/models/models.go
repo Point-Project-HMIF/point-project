@@ -148,6 +148,17 @@ type RegistrationRequest struct {
 	Members      []TeamMember `json:"members"`
 	ProposalURL  string       `json:"proposalUrl"`
 	PrototypeURL string       `json:"prototypeUrl"`
+	OTPCode      string       `json:"otpCode"`
+}
+
+type RegistrationOTPRequest struct {
+	LeaderName  string `json:"leaderName"`
+	LeaderEmail string `json:"leaderEmail"`
+}
+
+type RegistrationOTPResponse struct {
+	Message   string `json:"message"`
+	ExpiresIn int    `json:"expiresIn"`
 }
 
 type Submission struct {

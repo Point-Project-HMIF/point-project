@@ -11,6 +11,8 @@ type Config struct {
 	DatabaseURL        string
 	JWTSecret          string
 	CORSAllowedOrigins []string
+	ResendAPIKey       string
+	ResendFromEmail    string
 }
 
 func Load() Config {
@@ -21,6 +23,8 @@ func Load() Config {
 		DatabaseURL:        os.Getenv("DATABASE_URL"),
 		JWTSecret:          env("JWT_SECRET", "dev-secret-change-me"),
 		CORSAllowedOrigins: splitCSV(env("CORS_ALLOWED_ORIGINS", "http://localhost:5173")),
+		ResendAPIKey:       os.Getenv("RESEND_API_KEY"),
+		ResendFromEmail:    env("RESEND_FROM_EMAIL", "Point Project <noreply@contact.pointproject.web.id>"),
 	}
 }
 
