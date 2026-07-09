@@ -34,7 +34,7 @@ func NewRouter(store repository.Store, jwtSecret string, allowedOrigins []string
 	r := chi.NewRouter()
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   allowedOrigins,
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -50,6 +50,7 @@ func NewRouter(store repository.Store, jwtSecret string, allowedOrigins []string
 		r.Get("/events/{eventID}/categories", server.listCategories)
 		r.Get("/events/{eventID}/timeline", server.listTimeline)
 		r.Get("/events/{eventID}/committee", server.listCommittee)
+		r.Get("/events/{eventID}/faqs", server.listFAQs)
 		r.Get("/events/{eventID}/announcements", server.listAnnouncements)
 		r.Post("/registrations", server.createRegistration)
 		r.Get("/participants/{teamID}/dashboard", server.participantDashboard)
@@ -64,6 +65,10 @@ func NewRouter(store repository.Store, jwtSecret string, allowedOrigins []string
 			r.Patch("/admin/teams/{teamID}/verify", server.verifyTeam)
 			r.Post("/admin/events", server.createEvent)
 			r.Put("/admin/events/{eventID}/timeline", server.replaceTimeline)
+			r.Get("/admin/events/{eventID}/faqs", server.listAdminFAQs)
+			r.Post("/admin/faqs", server.createFAQ)
+			r.Put("/admin/faqs/{faqID}", server.updateFAQ)
+			r.Delete("/admin/faqs/{faqID}", server.deleteFAQ)
 			r.Post("/admin/announcements", server.createAnnouncement)
 			r.Get("/admin/users", server.listAdminUsers)
 			r.Post("/admin/users", server.createAdminUser)
@@ -116,6 +121,15 @@ func (s *Server) listCommittee(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, committee)
+}
+
+func (s *Server) listFAQs(w http.ResponseWriter, r *http.Request) {
+	faqs, err := s.store.ListFAQs(r.Context(), chi.URLParam(r, "eventID"), false)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeData(w, http.StatusOK, faqs)
 }
 
 func (s *Server) listAnnouncements(w http.ResponseWriter, r *http.Request) {
@@ -257,6 +271,51 @@ func (s *Server) replaceTimeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, items)
+}
+
+func (s *Server) listAdminFAQs(w http.ResponseWriter, r *http.Request) {
+	faqs, err := s.store.ListFAQs(r.Context(), chi.URLParam(r, "eventID"), true)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeData(w, http.StatusOK, faqs)
+}
+
+func (s *Server) createFAQ(w http.ResponseWriter, r *http.Request) {
+	var input models.FAQInput
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	faq, err := s.store.CreateFAQ(r.Context(), input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusCreated, faq)
+}
+
+func (s *Server) updateFAQ(w http.ResponseWriter, r *http.Request) {
+	var input models.FAQInput
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	faq, err := s.store.UpdateFAQ(r.Context(), chi.URLParam(r, "faqID"), input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusOK, faq)
+}
+
+func (s *Server) deleteFAQ(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteFAQ(r.Context(), chi.URLParam(r, "faqID")); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]string{"message": "FAQ dihapus"})
 }
 
 func (s *Server) createAnnouncement(w http.ResponseWriter, r *http.Request) {

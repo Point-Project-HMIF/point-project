@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api } from "../lib/api";
-import type { Announcement, Category, CommitteeMember, Event, TimelineItem } from "../lib/types";
+import type { Announcement, Category, CommitteeMember, Event, FAQ, TimelineItem } from "../lib/types";
 
 export function HomePage() {
   const [event, setEvent] = useState<Event | null>(null);
@@ -22,6 +22,7 @@ export function HomePage() {
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [committee, setCommittee] = useState<CommitteeMember[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -29,11 +30,12 @@ export function HomePage() {
     api
       .activeEvent()
       .then(async (active) => {
-        const [nextCategories, nextTimeline, nextCommittee, nextAnnouncements] = await Promise.all([
+        const [nextCategories, nextTimeline, nextCommittee, nextAnnouncements, nextFAQs] = await Promise.all([
           api.categories(active.id),
           api.timeline(active.id),
           api.committee(active.id),
-          api.announcements(active.id)
+          api.announcements(active.id),
+          api.faqs(active.id)
         ]);
         if (!alive) return;
         setEvent(active);
@@ -41,6 +43,7 @@ export function HomePage() {
         setTimeline(nextTimeline ?? []);
         setCommittee(nextCommittee ?? []);
         setAnnouncements(nextAnnouncements ?? []);
+        setFaqs(nextFAQs ?? []);
       })
       .catch((err) => {
         if (!alive) return;
@@ -55,13 +58,14 @@ export function HomePage() {
     () => (announcements ?? []).find((announcement) => announcement.type === "pemenang"),
     [announcements]
   );
+  const eventName = event?.name ?? "Point Project";
 
   return (
     <>
       <section className="relative isolate overflow-hidden bg-ink text-white">
         <img
           src="/point-project-hero.png"
-          alt="Ilustrasi kompetisi UI/UX Point Project 4.0"
+          alt={`Ilustrasi kompetisi UI/UX ${eventName}`}
           className="absolute inset-0 h-full w-full object-cover opacity-[0.58]"
         />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(16,24,39,0.96)_0%,rgba(16,24,39,0.78)_42%,rgba(16,24,39,0.18)_100%)]" />
@@ -69,7 +73,7 @@ export function HomePage() {
           <div className="max-w-3xl">
             <StatusPill tone="amber">Kompetisi UI/UX Nasional</StatusPill>
             <h1 className="mt-6 text-5xl font-black leading-tight sm:text-6xl lg:text-7xl">
-              {event?.name ?? "Point Project"}
+              {eventName}
             </h1>
             <p className="mt-5 max-w-2xl text-lg leading-8 text-white/84">
               {event?.theme ?? "Data event sedang dimuat dari database."}
@@ -106,7 +110,7 @@ export function HomePage() {
             <p className="text-xs font-black uppercase tracking-[0.18em] text-lagoon">Tentang Kegiatan</p>
             <h2 className="mt-3 text-3xl font-black sm:text-4xl">Satu platform untuk seluruh siklus kompetisi.</h2>
             <p className="mt-4 text-base leading-7 text-ink/68">
-              Point Project 4.0 menyatukan informasi, registrasi tim, submission karya, verifikasi panitia,
+              {eventName} menyatukan informasi, registrasi tim, submission karya, verifikasi panitia,
               pengumuman finalis, pemenang, dan arsip historis per tahun penyelenggaraan.
             </p>
           </div>
@@ -134,7 +138,7 @@ export function HomePage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <SectionHeading
             eyebrow="Timeline"
-            title="Jadwal Point Project 4.0"
+            title={`Jadwal ${eventName}`}
             body="Tahapan disusun agar peserta dapat mengikuti proses pendaftaran, pengumpulan karya, seleksi, dan final dengan jelas."
           />
           <div className="mt-10 grid gap-4 md:grid-cols-5">
@@ -193,7 +197,7 @@ export function HomePage() {
             <p className="text-xs font-black uppercase tracking-[0.18em] text-lagoon">Kepanitiaan</p>
             <h2 className="mt-3 text-3xl font-black">Struktur operasional per periode</h2>
             <p className="mt-4 text-base leading-7 text-ink/65">
-              Data kepanitiaan disimpan per event, sehingga struktur panitia Point Project 5.0 dan seterusnya dapat
+              Data kepanitiaan disimpan per event, sehingga struktur panitia periode berikutnya dapat
               ditambah tanpa menghapus rekam jejak sebelumnya.
             </p>
           </div>
@@ -239,33 +243,51 @@ export function HomePage() {
       </section>
 
       <section className="bg-white py-16">
-        <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 md:grid-cols-3 lg:px-8">
-          {[
-            {
-              icon: MapPin,
-              title: "Penyelenggara",
-              text: "Himpunan Mahasiswa Informatika Institut Teknologi Sumatera."
-            },
-            {
-              icon: Mail,
-              title: "Email",
-              text: "pointproject@hmifitera.id"
-            },
-            {
-              icon: UsersRound,
-              title: "FAQ",
-              text: "Tim berisi 2-3 orang. Proposal dan prototype dapat dikirim melalui tautan drive atau Figma."
-            }
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <article key={item.title} className="rounded-lg border border-ink/10 bg-cloud p-6">
-                <Icon className="text-lagoon" size={24} />
-                <h3 className="mt-4 font-black">{item.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-ink/65">{item.text}</p>
-              </article>
-            );
-          })}
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.75fr_1.25fr] lg:px-8">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+            {[
+              {
+                icon: MapPin,
+                title: "Penyelenggara",
+                text: "Himpunan Mahasiswa Informatika Institut Teknologi Sumatera."
+              },
+              {
+                icon: Mail,
+                title: "Email",
+                text: "pointproject@hmifitera.id"
+              }
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <article key={item.title} className="rounded-lg border border-ink/10 bg-cloud p-6">
+                  <Icon className="text-lagoon" size={24} />
+                  <h3 className="mt-4 font-black">{item.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-ink/65">{item.text}</p>
+                </article>
+              );
+            })}
+          </div>
+          <div>
+            <SectionHeading
+              eyebrow="FAQ"
+              title="Aturan dan Pertanyaan Umum"
+              body="Daftar ini dikelola langsung oleh admin atau panitia untuk event aktif."
+            />
+            <div className="mt-8 grid gap-4">
+              {faqs.map((faq) => (
+                <article key={faq.id} className="rounded-lg border border-ink/10 bg-cloud p-5">
+                  <h3 className="font-black">{faq.question}</h3>
+                  <p className="mt-2 text-sm leading-6 text-ink/65">{faq.answer}</p>
+                </article>
+              ))}
+              {!faqs.length ? (
+                <article className="rounded-lg border border-dashed border-ink/20 p-6 text-center">
+                  <h3 className="font-black">FAQ belum tersedia.</h3>
+                  <p className="mt-2 text-sm text-ink/60">Panitia akan memperbarui aturan melalui admin panel.</p>
+                </article>
+              ) : null}
+            </div>
+          </div>
         </div>
       </section>
     </>

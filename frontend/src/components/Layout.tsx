@@ -1,7 +1,9 @@
 import { Link, NavLink } from "react-router-dom";
 import { CalendarDays, LayoutDashboard, Megaphone, ShieldCheck, Sparkles, UserPlus } from "lucide-react";
 import clsx from "clsx";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { api } from "../lib/api";
+import type { Event } from "../lib/types";
 
 const navItems = [
   { to: "/", label: "Beranda", icon: Sparkles },
@@ -12,6 +14,21 @@ const navItems = [
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
+  const [event, setEvent] = useState<Event | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .activeEvent()
+      .then((active) => {
+        if (alive) setEvent(active);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-cloud text-ink">
       <header className="sticky top-0 z-40 border-b border-ink/10 bg-white/92 backdrop-blur">
@@ -66,7 +83,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <footer className="border-t border-ink/10 bg-white">
         <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr] lg:px-8">
           <div>
-            <p className="text-lg font-black">Point Project 4.0</p>
+            <p className="text-lg font-black">{event?.name ?? "Point Project"}</p>
             <p className="mt-2 max-w-xl text-sm leading-6 text-ink/65">
               Kanal resmi informasi, pendaftaran, submission, pengumuman, dan arsip kompetisi UI/UX Design HMIF ITERA.
             </p>
@@ -80,13 +97,24 @@ export function Layout({ children }: { children: ReactNode }) {
             <p className="text-sm font-black">Periode</p>
             <p className="mt-2 inline-flex items-center gap-2 text-sm text-ink/65">
               <CalendarDays size={16} />
-              Juli - Oktober 2026
+              {event ? formatEventPeriod(event) : "Periode event aktif"}
             </p>
           </div>
         </div>
       </footer>
     </div>
   );
+}
+
+function formatEventPeriod(event: Event) {
+  if (!event.startDate || !event.endDate) return String(event.year);
+  return `${formatShortDate(event.startDate)} - ${formatShortDate(event.endDate)} ${event.year}`;
+}
+
+function formatShortDate(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
 }
 
 export function SectionHeading({

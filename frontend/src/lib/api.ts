@@ -6,6 +6,8 @@ import type {
   CommitteeMember,
   CreateAdminUserPayload,
   Event,
+  FAQ,
+  FAQPayload,
   LoginResponse,
   ParticipantDashboard,
   RegistrationPayload,
@@ -45,6 +47,7 @@ export const api = {
   categories: (eventId: string) => request<Category[]>(`/events/${eventId}/categories`),
   timeline: (eventId: string) => request<TimelineItem[]>(`/events/${eventId}/timeline`),
   committee: (eventId: string) => request<CommitteeMember[]>(`/events/${eventId}/committee`),
+  faqs: (eventId: string) => request<FAQ[]>(`/events/${eventId}/faqs`),
   announcements: (eventId: string, type = "") =>
     request<Announcement[]>(`/events/${eventId}/announcements${type ? `?type=${type}` : ""}`),
   register: (payload: RegistrationPayload) =>
@@ -80,6 +83,12 @@ export const api = {
       { method: "PUT", body: JSON.stringify({ items }) },
       token
     ),
+  adminFaqs: (token: string, eventId: string) => request<FAQ[]>(`/admin/events/${eventId}/faqs`, {}, token),
+  createFaq: (token: string, payload: FAQPayload) =>
+    request<FAQ>("/admin/faqs", { method: "POST", body: JSON.stringify(payload) }, token),
+  updateFaq: (token: string, faqId: string, payload: FAQPayload) =>
+    request<FAQ>(`/admin/faqs/${faqId}`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  deleteFaq: (token: string, faqId: string) => request<{ message: string }>(`/admin/faqs/${faqId}`, { method: "DELETE" }, token),
   createAnnouncement: (token: string, payload: Partial<Announcement>) =>
     request<Announcement>("/admin/announcements", { method: "POST", body: JSON.stringify(payload) }, token),
   adminUsers: (token: string) => request<AdminUser[]>("/admin/users", {}, token),

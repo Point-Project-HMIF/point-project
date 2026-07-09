@@ -239,6 +239,101 @@ func (s *PostgresStore) ListCommittee(ctx context.Context, eventID string) ([]mo
 	return members, rows.Err()
 }
 
+func (s *PostgresStore) ListFAQs(ctx context.Context, eventID string, includeHidden bool) ([]models.FAQ, error) {
+	query := `
+		select id::text, event_id::text, question, answer, sort_order, is_published
+		from faqs
+		where event_id = $1
+	`
+	if !includeHidden {
+		query += " and is_published = true"
+	}
+	query += " order by sort_order, created_at"
+
+	rows, err := s.db.Query(ctx, query, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	faqs := make([]models.FAQ, 0)
+	for rows.Next() {
+		faq, err := scanFAQ(rows)
+		if err != nil {
+			return nil, err
+		}
+		faqs = append(faqs, faq)
+	}
+	return faqs, rows.Err()
+}
+
+func (s *PostgresStore) CreateFAQ(ctx context.Context, input models.FAQInput) (models.FAQ, error) {
+	if strings.TrimSpace(input.EventID) == "" {
+		return models.FAQ{}, errors.New("event FAQ wajib dipilih")
+	}
+	if strings.TrimSpace(input.Question) == "" {
+		return models.FAQ{}, errors.New("pertanyaan FAQ wajib diisi")
+	}
+	row := s.db.QueryRow(ctx, `
+		insert into faqs (event_id, question, answer, sort_order, is_published)
+		values ($1, $2, $3, $4, $5)
+		returning id::text, event_id::text, question, answer, sort_order, is_published
+	`,
+		strings.TrimSpace(input.EventID),
+		strings.TrimSpace(input.Question),
+		strings.TrimSpace(input.Answer),
+		input.SortOrder,
+		input.IsPublished,
+	)
+	return scanFAQ(row)
+}
+
+func (s *PostgresStore) UpdateFAQ(ctx context.Context, faqID string, input models.FAQInput) (models.FAQ, error) {
+	if strings.TrimSpace(input.Question) == "" {
+		return models.FAQ{}, errors.New("pertanyaan FAQ wajib diisi")
+	}
+	row := s.db.QueryRow(ctx, `
+		update faqs
+		set question = $2,
+		    answer = $3,
+		    sort_order = $4,
+		    is_published = $5,
+		    updated_at = now()
+		where id = $1
+		returning id::text, event_id::text, question, answer, sort_order, is_published
+	`,
+		faqID,
+		strings.TrimSpace(input.Question),
+		strings.TrimSpace(input.Answer),
+		input.SortOrder,
+		input.IsPublished,
+	)
+	faq, err := scanFAQ(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.FAQ{}, errors.New("FAQ not found")
+	}
+	return faq, err
+}
+
+func (s *PostgresStore) DeleteFAQ(ctx context.Context, faqID string) error {
+	result, err := s.db.Exec(ctx, `delete from faqs where id = $1`, faqID)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return errors.New("FAQ not found")
+	}
+	return nil
+}
+
+func scanFAQ(row interface{ Scan(dest ...any) error }) (models.FAQ, error) {
+	var faq models.FAQ
+	if err := row.Scan(&faq.ID, &faq.EventID, &faq.Question, &faq.Answer, &faq.SortOrder, &faq.IsPublished); err != nil {
+		return models.FAQ{}, err
+	}
+	return faq, nil
+}
+
 func (s *PostgresStore) ListAnnouncements(ctx context.Context, eventID, kind string) ([]models.Announcement, error) {
 	query := `
 		select id::text, event_id::text, type, title, body,

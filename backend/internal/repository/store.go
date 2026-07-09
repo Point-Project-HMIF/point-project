@@ -15,6 +15,10 @@ type Store interface {
 	ListTimeline(ctx context.Context, eventID string) ([]models.TimelineItem, error)
 	ReplaceTimeline(ctx context.Context, eventID string, items []models.TimelineItemInput) ([]models.TimelineItem, error)
 	ListCommittee(ctx context.Context, eventID string) ([]models.CommitteeMember, error)
+	ListFAQs(ctx context.Context, eventID string, includeHidden bool) ([]models.FAQ, error)
+	CreateFAQ(ctx context.Context, input models.FAQInput) (models.FAQ, error)
+	UpdateFAQ(ctx context.Context, faqID string, input models.FAQInput) (models.FAQ, error)
+	DeleteFAQ(ctx context.Context, faqID string) error
 	ListAnnouncements(ctx context.Context, eventID, kind string) ([]models.Announcement, error)
 	CreateTeam(ctx context.Context, input models.RegistrationRequest) (models.Team, error)
 	GetDashboard(ctx context.Context, teamID string) (models.Dashboard, error)

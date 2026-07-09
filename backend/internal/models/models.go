@@ -50,6 +50,23 @@ type CommitteeMember struct {
 	Division string `json:"division"`
 }
 
+type FAQ struct {
+	ID          string `json:"id"`
+	EventID     string `json:"eventId"`
+	Question    string `json:"question"`
+	Answer      string `json:"answer"`
+	SortOrder   int    `json:"sortOrder"`
+	IsPublished bool   `json:"isPublished"`
+}
+
+type FAQInput struct {
+	EventID     string `json:"eventId"`
+	Question    string `json:"question"`
+	Answer      string `json:"answer"`
+	SortOrder   int    `json:"sortOrder"`
+	IsPublished bool   `json:"isPublished"`
+}
+
 type TeamMember struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`

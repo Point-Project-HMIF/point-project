@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   ClipboardList,
   FileSpreadsheet,
+  HelpCircle,
   LayoutGrid,
   LogIn,
   Megaphone,
@@ -29,13 +30,15 @@ import type {
   CommitteeMember,
   CreateAdminUserPayload,
   Event,
+  FAQ,
+  FAQPayload,
   Team,
   TeamDetail,
   TimelineItem,
   TimelineItemInput
 } from "../lib/types";
 
-type Tab = "overview" | "event" | "peserta" | "panitia" | "jadwal" | "submission" | "pengumuman" | "akun";
+type Tab = "overview" | "event" | "peserta" | "panitia" | "jadwal" | "submission" | "faq" | "pengumuman" | "akun";
 
 const emptyStats: AdminStats = {
   events: 0,
@@ -53,6 +56,7 @@ const tabs: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
   { id: "panitia", label: "Panitia", icon: UserCog },
   { id: "jadwal", label: "Jadwal", icon: ClipboardList },
   { id: "submission", label: "Submission", icon: FileSpreadsheet },
+  { id: "faq", label: "FAQ", icon: HelpCircle },
   { id: "pengumuman", label: "Pengumuman", icon: Megaphone },
   { id: "akun", label: "Akun Admin", icon: ShieldCheck }
 ];
@@ -63,6 +67,14 @@ const emptyTimelineItem = (sortOrder: number): TimelineItemInput => ({
   endDate: "",
   description: "",
   sortOrder
+});
+
+const emptyFAQForm = (eventId = "", sortOrder = 1): FAQPayload => ({
+  eventId,
+  question: "",
+  answer: "",
+  sortOrder,
+  isPublished: true
 });
 
 export function AdminPanel() {
@@ -76,6 +88,7 @@ export function AdminPanel() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [event, setEvent] = useState<Event | null>(null);
   const [committee, setCommittee] = useState<CommitteeMember[]>([]);
+  const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [timelineDraft, setTimelineDraft] = useState<TimelineItemInput[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
@@ -85,6 +98,7 @@ export function AdminPanel() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [editingFaqId, setEditingFaqId] = useState("");
   const [login, setLogin] = useState({ email: "", password: "" });
   const [eventForm, setEventForm] = useState({
     name: "",
@@ -101,6 +115,7 @@ export function AdminPanel() {
     division: "",
     password: ""
   });
+  const [faqForm, setFaqForm] = useState<FAQPayload>(() => emptyFAQForm());
   const [announcementForm, setAnnouncementForm] = useState({
     type: "finalis",
     title: "",
@@ -151,7 +166,11 @@ export function AdminPanel() {
 
     Promise.all([api.adminStats(nextToken), api.adminTeams(nextToken), api.adminUsers(nextToken), api.activeEvent()])
       .then(async ([nextStats, nextTeams, nextUsers, active]) => {
-        const [nextCommittee, nextTimeline] = await Promise.all([api.committee(active.id), api.timeline(active.id)]);
+        const [nextCommittee, nextTimeline, nextFAQs] = await Promise.all([
+          api.committee(active.id),
+          api.timeline(active.id),
+          api.adminFaqs(nextToken, active.id)
+        ]);
         setStats(nextStats);
         setTeams(nextTeams ?? []);
         setAdminUsers(nextUsers ?? []);
@@ -159,6 +178,12 @@ export function AdminPanel() {
         setCommittee(nextCommittee ?? []);
         setTimeline(nextTimeline ?? []);
         setTimelineDraft((nextTimeline ?? []).map(timelineToInput));
+        setFaqs(nextFAQs ?? []);
+        setFaqForm((current) => ({
+          ...current,
+          eventId: active.id,
+          sortOrder: current.eventId === active.id ? current.sortOrder : (nextFAQs ?? []).length + 1
+        }));
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : "Gagal memuat data admin.");
@@ -267,6 +292,71 @@ export function AdminPanel() {
       setMessage(`Akun ${nextUser.email} berhasil dibuat.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal membuat akun panitia.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveFAQ(eventSubmit: FormEvent<HTMLFormElement>) {
+    eventSubmit.preventDefault();
+    if (!event) {
+      setError("Event aktif belum dimuat.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const payload: FAQPayload = {
+      ...faqForm,
+      eventId: event.id,
+      question: faqForm.question.trim(),
+      answer: faqForm.answer.trim(),
+      sortOrder: Number(faqForm.sortOrder) || faqs.length + 1
+    };
+    try {
+      const nextFAQ = editingFaqId
+        ? await api.updateFaq(token, editingFaqId, payload)
+        : await api.createFaq(token, payload);
+      setFaqs((current) =>
+        sortFAQs(editingFaqId ? current.map((faq) => (faq.id === nextFAQ.id ? nextFAQ : faq)) : [...current, nextFAQ])
+      );
+      setEditingFaqId("");
+      setFaqForm(emptyFAQForm(event.id, faqs.length + (editingFaqId ? 1 : 2)));
+      setMessage(editingFaqId ? "FAQ berhasil diperbarui." : "FAQ baru berhasil ditambahkan.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan FAQ.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function editFAQ(faq: FAQ) {
+    setEditingFaqId(faq.id);
+    setFaqForm({
+      eventId: faq.eventId,
+      question: faq.question,
+      answer: faq.answer,
+      sortOrder: faq.sortOrder,
+      isPublished: faq.isPublished
+    });
+  }
+
+  function cancelFAQEdit() {
+    setEditingFaqId("");
+    setFaqForm(emptyFAQForm(event?.id ?? "", faqs.length + 1));
+  }
+
+  async function deleteFAQ(faqId: string) {
+    setLoading(true);
+    setError("");
+    try {
+      await api.deleteFaq(token, faqId);
+      setFaqs((current) => current.filter((faq) => faq.id !== faqId));
+      if (editingFaqId === faqId) {
+        cancelFAQEdit();
+      }
+      setMessage("FAQ berhasil dihapus.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menghapus FAQ.");
     } finally {
       setLoading(false);
     }
@@ -419,34 +509,36 @@ export function AdminPanel() {
             ) : null}
 
             {tab === "peserta" ? (
-              <div className={clsx("grid gap-5", selectedTeam && "xl:grid-cols-[minmax(0,1fr)_380px]")}>
-                <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
-                  <div className="grid gap-3 md:grid-cols-[1fr_220px]">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-3 text-ink/35" size={18} />
-                      <input
-                        className="field pl-10"
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                        placeholder="Cari tim, ketua, instansi, email"
-                      />
+              <div className="rounded-lg border border-ink/10 bg-white p-4 shadow-soft sm:p-5">
+                <div className={clsx("grid gap-5", selectedTeam && "xl:grid-cols-[minmax(0,1fr)_360px]")}>
+                  <div className="min-w-0">
+                    <div className="grid gap-3 md:grid-cols-[1fr_220px]">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-3 text-ink/35" size={18} />
+                        <input
+                          className="field pl-10"
+                          value={search}
+                          onChange={(event) => setSearch(event.target.value)}
+                          placeholder="Cari tim, ketua, instansi, email"
+                        />
+                      </div>
+                      <select className="field" value={status} onChange={(event) => setStatus(event.target.value)}>
+                        <option value="">Semua status</option>
+                        <option value="pending">Pending</option>
+                        <option value="verified">Verified</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
                     </div>
-                    <select className="field" value={status} onChange={(event) => setStatus(event.target.value)}>
-                      <option value="">Semua status</option>
-                      <option value="pending">Pending</option>
-                      <option value="verified">Verified</option>
-                      <option value="rejected">Rejected</option>
-                    </select>
+                    <TeamTable
+                      teams={filteredTeams}
+                      onVerify={verify}
+                      onDetail={openTeamDetail}
+                      loading={loading}
+                      selectedTeamId={selectedTeam?.team.id}
+                    />
                   </div>
-                  <TeamTable
-                    teams={filteredTeams}
-                    onVerify={verify}
-                    onDetail={openTeamDetail}
-                    loading={loading}
-                    selectedTeamId={selectedTeam?.team.id}
-                  />
+                  {selectedTeam ? <TeamDetailPanel detail={selectedTeam} onClose={() => setSelectedTeam(null)} embedded /> : null}
                 </div>
-                {selectedTeam ? <TeamDetailPanel detail={selectedTeam} onClose={() => setSelectedTeam(null)} /> : null}
               </div>
             ) : null}
 
@@ -625,20 +717,111 @@ export function AdminPanel() {
               </div>
             ) : null}
 
-            {tab === "submission" ? (
-              <div className={clsx("grid gap-5", selectedTeam && "xl:grid-cols-[minmax(0,1fr)_380px]")}>
-                <div className="rounded-lg border border-ink/10 bg-white p-4 shadow-soft sm:p-5">
-                  <h2 className="text-xl font-black">Rekap Submission</h2>
-                  <TeamTable
-                    teams={teams}
-                    onVerify={verify}
-                    onDetail={openTeamDetail}
-                    loading={loading}
-                    selectedTeamId={selectedTeam?.team.id}
-                    compact
-                  />
+            {tab === "faq" ? (
+              <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+                <form onSubmit={saveFAQ} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                  <h2 className="text-xl font-black">{editingFaqId ? "Edit FAQ" : "Tambah FAQ / Aturan"}</h2>
+                  <div className="mt-5 grid gap-4">
+                    <TextField
+                      label="Pertanyaan"
+                      value={faqForm.question}
+                      onChange={(value) => setFaqForm((current) => ({ ...current, question: value }))}
+                      placeholder="Contoh: Berapa jumlah anggota dalam satu tim?"
+                    />
+                    <TextAreaField
+                      label="Jawaban / Aturan"
+                      value={faqForm.answer}
+                      onChange={(value) => setFaqForm((current) => ({ ...current, answer: value }))}
+                      placeholder="Tulis aturan atau jawaban yang akan tampil di landing page."
+                    />
+                    <TextField
+                      label="Urutan"
+                      type="number"
+                      value={String(faqForm.sortOrder)}
+                      onChange={(value) => setFaqForm((current) => ({ ...current, sortOrder: Number(value) }))}
+                    />
+                    <label className="flex items-center gap-3 rounded-md bg-cloud px-4 py-3 text-sm font-bold">
+                      <input
+                        type="checkbox"
+                        checked={faqForm.isPublished}
+                        onChange={(event) => setFaqForm((current) => ({ ...current, isPublished: event.target.checked }))}
+                      />
+                      Tampilkan di halaman publik
+                    </label>
+                  </div>
+                  <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                    {editingFaqId ? (
+                      <button type="button" className="btn-secondary" onClick={cancelFAQEdit} disabled={loading}>
+                        Batal
+                      </button>
+                    ) : null}
+                    <button className="btn-primary" disabled={loading || !event}>
+                      <Save size={18} />
+                      {editingFaqId ? "Simpan Perubahan" : "Tambah FAQ"}
+                    </button>
+                  </div>
+                </form>
+
+                <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="text-xl font-black">FAQ & Aturan Publik</h2>
+                      <p className="mt-1 text-sm text-ink/60">{event?.name ?? "Event aktif"} memakai daftar ini secara dinamis.</p>
+                    </div>
+                    <StatusPill tone="ink">{faqs.length} item</StatusPill>
+                  </div>
+                  <div className="mt-5 grid gap-3">
+                    {faqs.map((faq) => (
+                      <article key={faq.id} className="rounded-lg border border-ink/10 p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusPill tone={faq.isPublished ? "teal" : "ink"}>
+                                {faq.isPublished ? "Published" : "Draft"}
+                              </StatusPill>
+                              <span className="text-xs font-bold text-ink/45">Urutan {faq.sortOrder}</span>
+                            </div>
+                            <h3 className="mt-3 break-words font-black">{faq.question}</h3>
+                            <p className="mt-2 break-words text-sm leading-6 text-ink/65">{faq.answer || "-"}</p>
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <button type="button" className="btn-secondary px-3 py-2" onClick={() => editFAQ(faq)} disabled={loading}>
+                              Edit
+                            </button>
+                            <button type="button" className="btn-secondary px-3 py-2" onClick={() => deleteFAQ(faq.id)} disabled={loading}>
+                              Hapus
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                    {!faqs.length ? (
+                      <article className="rounded-lg border border-dashed border-ink/20 p-8 text-center">
+                        <p className="font-black">Belum ada FAQ.</p>
+                        <p className="mt-2 text-sm text-ink/60">Tambahkan aturan pertama untuk event aktif.</p>
+                      </article>
+                    ) : null}
+                  </div>
                 </div>
-                {selectedTeam ? <TeamDetailPanel detail={selectedTeam} onClose={() => setSelectedTeam(null)} /> : null}
+              </div>
+            ) : null}
+
+            {tab === "submission" ? (
+              <div className="rounded-lg border border-ink/10 bg-white p-4 shadow-soft sm:p-5">
+                <div className={clsx("grid gap-5", selectedTeam && "xl:grid-cols-[minmax(0,1fr)_360px]")}>
+                  <div className="min-w-0">
+                    <h2 className="text-xl font-black">Rekap Submission</h2>
+                    <TeamTable
+                      teams={teams}
+                      onVerify={verify}
+                      onDetail={openTeamDetail}
+                      loading={loading}
+                      selectedTeamId={selectedTeam?.team.id}
+                      compact
+                    />
+                  </div>
+                  {selectedTeam ? <TeamDetailPanel detail={selectedTeam} onClose={() => setSelectedTeam(null)} embedded /> : null}
+                </div>
               </div>
             ) : null}
 
@@ -725,6 +908,10 @@ function normalizeTeamDetail(detail: TeamDetail): TeamDetail {
   };
 }
 
+function sortFAQs(items: FAQ[]) {
+  return [...items].sort((a, b) => a.sortOrder - b.sortOrder || a.question.localeCompare(b.question));
+}
+
 function updateTimelineDraft(
   index: number,
   key: Exclude<keyof TimelineItemInput, "sortOrder">,
@@ -770,9 +957,52 @@ function TextField({
   );
 }
 
-function TeamDetailPanel({ detail, onClose }: { detail: TeamDetail; onClose: () => void }) {
+function TextAreaField({
+  label,
+  value,
+  onChange,
+  placeholder
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const id = label.toLowerCase().replace(/\s+/g, "-");
   return (
-    <article className="min-w-0 rounded-lg border border-ink/10 bg-white p-4 shadow-soft sm:p-5">
+    <div>
+      <label className="label" htmlFor={id}>
+        {label}
+      </label>
+      <textarea
+        id={id}
+        className="field min-h-32 resize-y"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
+function TeamDetailPanel({
+  detail,
+  onClose,
+  embedded = false
+}: {
+  detail: TeamDetail;
+  onClose: () => void;
+  embedded?: boolean;
+}) {
+  return (
+    <article
+      className={clsx(
+        "min-w-0",
+        embedded
+          ? "border-t border-ink/10 pt-5 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0"
+          : "rounded-lg border border-ink/10 bg-white p-4 shadow-soft sm:p-5"
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <StatusPill tone={detail.team.verificationStatus === "verified" ? "teal" : detail.team.verificationStatus === "rejected" ? "coral" : "amber"}>
@@ -873,7 +1103,7 @@ function TeamTable({
 
   return (
     <>
-      <div className="mt-5 grid gap-3 md:hidden">
+      <div className="mt-5 grid gap-3 lg:hidden">
         {teams.map((team) => (
           <article
             key={team.id}
@@ -929,7 +1159,7 @@ function TeamTable({
         {!teams.length ? <p className="p-6 text-center text-sm text-ink/60">Belum ada peserta sesuai filter.</p> : null}
       </div>
 
-      <div className="mt-5 hidden overflow-x-auto md:block">
+      <div className="mt-5 hidden overflow-x-auto lg:block">
         <table className={clsx("w-full text-left text-sm", compact ? "min-w-[680px]" : "min-w-[760px] lg:min-w-[900px]")}>
           <thead className="border-b border-ink/10 text-xs uppercase text-ink/45">
             <tr>

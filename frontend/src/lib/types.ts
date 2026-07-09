@@ -44,6 +44,23 @@ export type CommitteeMember = {
   division: string;
 };
 
+export type FAQ = {
+  id: string;
+  eventId: string;
+  question: string;
+  answer: string;
+  sortOrder: number;
+  isPublished: boolean;
+};
+
+export type FAQPayload = {
+  eventId: string;
+  question: string;
+  answer: string;
+  sortOrder: number;
+  isPublished: boolean;
+};
+
 export type TeamMember = {
   name: string;
   email: string;
