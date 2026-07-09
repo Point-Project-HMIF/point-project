@@ -94,6 +94,10 @@ export const api = {
     ),
   createEvent: (token: string, payload: Partial<Event>) =>
     request<Event>("/admin/events", { method: "POST", body: JSON.stringify(payload) }, token),
+  activateEvent: (token: string, eventId: string) =>
+    request<Event>(`/admin/events/${eventId}/activate`, { method: "PATCH" }, token),
+  lockEvent: (token: string, eventId: string) =>
+    request<Event>(`/admin/events/${eventId}/lock`, { method: "PATCH" }, token),
   updateTimeline: (token: string, eventId: string, items: TimelineItemInput[]) =>
     request<TimelineItem[]>(
       `/admin/events/${eventId}/timeline`,

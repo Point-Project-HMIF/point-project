@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 
@@ -29,7 +30,8 @@ func (s *PostgresStore) ListEvents(ctx context.Context) ([]models.Event, error) 
 		select id::text, name, theme, year,
 		       to_char(starts_at, 'YYYY-MM-DD'),
 		       to_char(ends_at, 'YYYY-MM-DD'),
-		       status
+		       status,
+		       coalesce(to_char(locked_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), '')
 		from events
 		order by year desc
 	`)
@@ -41,7 +43,7 @@ func (s *PostgresStore) ListEvents(ctx context.Context) ([]models.Event, error) 
 	events := make([]models.Event, 0)
 	for rows.Next() {
 		var event models.Event
-		if err := rows.Scan(&event.ID, &event.Name, &event.Theme, &event.Year, &event.StartDate, &event.EndDate, &event.Status); err != nil {
+		if err := rows.Scan(&event.ID, &event.Name, &event.Theme, &event.Year, &event.StartDate, &event.EndDate, &event.Status, &event.LockedAt); err != nil {
 			return nil, err
 		}
 		events = append(events, event)
@@ -54,7 +56,8 @@ func (s *PostgresStore) ActiveEvent(ctx context.Context) (models.Event, error) {
 		select id::text, name, theme, year,
 		       to_char(starts_at, 'YYYY-MM-DD'),
 		       to_char(ends_at, 'YYYY-MM-DD'),
-		       status
+		       status,
+		       coalesce(to_char(locked_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), '')
 		from events
 		order by case when status = 'aktif' then 0 else 1 end, year desc
 		limit 1
@@ -70,7 +73,8 @@ func (s *PostgresStore) GetEvent(ctx context.Context, eventID string) (models.Ev
 		select id::text, name, theme, year,
 		       to_char(starts_at, 'YYYY-MM-DD'),
 		       to_char(ends_at, 'YYYY-MM-DD'),
-		       status
+		       status,
+		       coalesce(to_char(locked_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), '')
 		from events
 		where id = $1
 	`, eventID)
@@ -86,6 +90,7 @@ func (s *PostgresStore) scanEvent(ctx context.Context, query string, args ...any
 		&event.StartDate,
 		&event.EndDate,
 		&event.Status,
+		&event.LockedAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return models.Event{}, errors.New("event not found")
@@ -1283,20 +1288,40 @@ func (s *PostgresStore) UpdateTeamStatus(ctx context.Context, teamID, status str
 }
 
 func (s *PostgresStore) CreateEvent(ctx context.Context, input models.CreateEventRequest) (models.Event, error) {
+	input.Name = strings.TrimSpace(input.Name)
+	input.Theme = strings.TrimSpace(input.Theme)
+	input.Status = strings.TrimSpace(input.Status)
 	if input.Status == "" {
 		input.Status = "draft"
 	}
+	if input.Name == "" || input.Theme == "" || input.Year == 0 || input.StartDate == "" || input.EndDate == "" {
+		return models.Event{}, errors.New("nama, tema, tahun, tanggal mulai, dan tanggal selesai event wajib diisi")
+	}
+	if input.Status == "aktif" {
+		return models.Event{}, errors.New("gunakan tab Event Aktif untuk mengaktifkan event")
+	}
+	if input.Status != "draft" && input.Status != "arsip" {
+		return models.Event{}, errors.New("status event tidak valid")
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return models.Event{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	var event models.Event
-	if err := s.db.QueryRow(ctx, `
+	if err := tx.QueryRow(ctx, `
 		insert into events (name, theme, year, starts_at, ends_at, status)
 		values ($1, $2, $3, $4, $5, $6)
 		returning id::text, name, theme, year,
 		          to_char(starts_at, 'YYYY-MM-DD'),
 		          to_char(ends_at, 'YYYY-MM-DD'),
-		          status
+		          status,
+		          coalesce(to_char(locked_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), '')
 	`,
-		strings.TrimSpace(input.Name),
-		strings.TrimSpace(input.Theme),
+		input.Name,
+		input.Theme,
 		input.Year,
 		input.StartDate,
 		input.EndDate,
@@ -1309,10 +1334,149 @@ func (s *PostgresStore) CreateEvent(ctx context.Context, input models.CreateEven
 		&event.StartDate,
 		&event.EndDate,
 		&event.Status,
+		&event.LockedAt,
 	); err != nil {
 		return models.Event{}, err
 	}
+
+	if err := seedEventDefaults(ctx, tx, event.ID); err != nil {
+		return models.Event{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return models.Event{}, err
+	}
 	return event, nil
+}
+
+func (s *PostgresStore) ActivateEvent(ctx context.Context, eventID string) (models.Event, error) {
+	eventID = strings.TrimSpace(eventID)
+	if eventID == "" {
+		return models.Event{}, errors.New("event wajib dipilih")
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return models.Event{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var targetStatus string
+	var targetLocked bool
+	if err := tx.QueryRow(ctx, `
+		select status, locked_at is not null
+		from events
+		where id = $1
+		for update
+	`, eventID).Scan(&targetStatus, &targetLocked); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.Event{}, errors.New("event tidak ditemukan")
+		}
+		return models.Event{}, err
+	}
+	if targetLocked {
+		return models.Event{}, errors.New("event yang sudah dikunci tidak bisa diaktifkan lagi dari admin")
+	}
+	if targetStatus == "aktif" {
+		if err := tx.Commit(ctx); err != nil {
+			return models.Event{}, err
+		}
+		return s.GetEvent(ctx, eventID)
+	}
+
+	var activeID string
+	var activeLocked bool
+	activeErr := tx.QueryRow(ctx, `
+		select id::text, locked_at is not null
+		from events
+		where status = 'aktif'
+		order by updated_at desc
+		limit 1
+		for update
+	`).Scan(&activeID, &activeLocked)
+	if activeErr != nil && !errors.Is(activeErr, pgx.ErrNoRows) {
+		return models.Event{}, activeErr
+	}
+	if activeErr == nil && activeID != eventID && !activeLocked {
+		return models.Event{}, errors.New("lock event aktif saat ini terlebih dahulu sebelum mengganti event")
+	}
+
+	if _, err := tx.Exec(ctx, `
+		update events
+		set status = 'arsip', updated_at = now()
+		where status = 'aktif' and id <> $1
+	`, eventID); err != nil {
+		return models.Event{}, err
+	}
+	if _, err := tx.Exec(ctx, `
+		update events
+		set status = 'aktif', updated_at = now()
+		where id = $1
+	`, eventID); err != nil {
+		return models.Event{}, err
+	}
+	if err := seedEventDefaults(ctx, tx, eventID); err != nil {
+		return models.Event{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return models.Event{}, err
+	}
+	return s.GetEvent(ctx, eventID)
+}
+
+func (s *PostgresStore) LockEvent(ctx context.Context, eventID string) (models.Event, error) {
+	eventID = strings.TrimSpace(eventID)
+	if eventID == "" {
+		return models.Event{}, errors.New("event wajib dipilih")
+	}
+
+	var event models.Event
+	if err := s.db.QueryRow(ctx, `
+		update events
+		set locked_at = now(), updated_at = now()
+		where id = $1 and locked_at is null
+		returning id::text, name, theme, year,
+		          to_char(starts_at, 'YYYY-MM-DD'),
+		          to_char(ends_at, 'YYYY-MM-DD'),
+		          status,
+		          coalesce(to_char(locked_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), '')
+	`, eventID).Scan(
+		&event.ID,
+		&event.Name,
+		&event.Theme,
+		&event.Year,
+		&event.StartDate,
+		&event.EndDate,
+		&event.Status,
+		&event.LockedAt,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.Event{}, errors.New("event tidak ditemukan atau sudah dikunci")
+		}
+		return models.Event{}, err
+	}
+	return event, nil
+}
+
+type eventDefaultExecutor interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+func seedEventDefaults(ctx context.Context, exec eventDefaultExecutor, eventID string) error {
+	if _, err := exec.Exec(ctx, `
+		insert into event_rules (event_id, min_team_members, max_team_members)
+		values ($1, 2, 3)
+		on conflict (event_id) do nothing
+	`, eventID); err != nil {
+		return err
+	}
+	_, err := exec.Exec(ctx, `
+		insert into submission_stages (event_id, key, label, sort_order, is_open, requires_approval)
+		values
+			($1, 'awal', 'Upload Karya Awal', 1, true, false),
+			($1, 'final', 'Upload Karya Final', 2, true, true)
+		on conflict (event_id, key) do nothing
+	`, eventID)
+	return err
 }
 
 func (s *PostgresStore) CreateAnnouncement(ctx context.Context, input models.CreateAnnouncementRequest) (models.Announcement, error) {

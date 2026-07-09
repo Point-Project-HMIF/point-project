@@ -8,6 +8,7 @@ type Event struct {
 	StartDate string `json:"startDate"`
 	EndDate   string `json:"endDate"`
 	Status    string `json:"status"`
+	LockedAt  string `json:"lockedAt"`
 }
 
 type Category struct {

@@ -18,14 +18,19 @@ export function Layout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let alive = true;
-    api
-      .activeEvent()
-      .then((active) => {
-        if (alive) setEvent(active);
-      })
-      .catch(() => undefined);
+    const loadActiveEvent = () => {
+      api
+        .activeEvent()
+        .then((active) => {
+          if (alive) setEvent(active);
+        })
+        .catch(() => undefined);
+    };
+    loadActiveEvent();
+    window.addEventListener("pointproject:event-changed", loadActiveEvent);
     return () => {
       alive = false;
+      window.removeEventListener("pointproject:event-changed", loadActiveEvent);
     };
   }, []);
 

@@ -6,6 +6,7 @@ export type Event = {
   startDate: string;
   endDate: string;
   status: "draft" | "aktif" | "arsip" | string;
+  lockedAt: string;
 };
 
 export type Category = {

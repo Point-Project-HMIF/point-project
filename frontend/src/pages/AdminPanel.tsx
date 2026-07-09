@@ -1,14 +1,17 @@
 import { FormEvent, useEffect, useMemo, useState, type Dispatch, type KeyboardEvent, type MouseEvent, type SetStateAction } from "react";
 import {
+  AlertTriangle,
   CalendarClock,
   CheckCircle2,
   ClipboardList,
   FileSpreadsheet,
   HelpCircle,
   LayoutGrid,
+  Lock,
   LogIn,
   Megaphone,
   Plus,
+  Power,
   RefreshCw,
   Save,
   Search,
@@ -40,7 +43,8 @@ import type {
   TimelineItemInput
 } from "../lib/types";
 
-type Tab = "overview" | "event" | "peserta" | "panitia" | "jadwal" | "submission" | "faq" | "pengumuman" | "akun";
+type Tab = "overview" | "event-switch" | "event" | "peserta" | "panitia" | "jadwal" | "submission" | "faq" | "pengumuman" | "akun";
+type EventAction = { type: "lock" | "activate"; event: Event } | null;
 
 const emptyStats: AdminStats = {
   events: 0,
@@ -51,9 +55,10 @@ const emptyStats: AdminStats = {
   winners: 0
 };
 
-const tabs: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
+const tabs: Array<{ id: Tab; label: string; icon: LucideIcon; superOnly?: boolean }> = [
   { id: "overview", label: "Overview", icon: LayoutGrid },
-  { id: "event", label: "Event", icon: CalendarClock },
+  { id: "event-switch", label: "Event Aktif", icon: Power, superOnly: true },
+  { id: "event", label: "Event", icon: CalendarClock, superOnly: true },
   { id: "peserta", label: "Peserta", icon: UsersRound },
   { id: "panitia", label: "Panitia", icon: UserCog },
   { id: "jadwal", label: "Jadwal", icon: ClipboardList },
@@ -121,6 +126,7 @@ export function AdminPanel() {
   const [stats, setStats] = useState<AdminStats>(emptyStats);
   const [teams, setTeams] = useState<Team[]>([]);
   const [event, setEvent] = useState<Event | null>(null);
+  const [events, setEvents] = useState<Event[]>([]);
   const [committee, setCommittee] = useState<CommitteeMember[]>([]);
   const [rules, setRules] = useState<EventRules>(emptyRules);
   const [rulesDraft, setRulesDraft] = useState({ minTeamMembers: 2, maxTeamMembers: 3 });
@@ -135,6 +141,8 @@ export function AdminPanel() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [switchingEvent, setSwitchingEvent] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<EventAction>(null);
   const [editingFaqId, setEditingFaqId] = useState("");
   const [login, setLogin] = useState({ email: "", password: "" });
   const [eventForm, setEventForm] = useState({
@@ -175,6 +183,9 @@ export function AdminPanel() {
     return `${name}.${nim}@student.itera.ac.id`;
   }, [adminForm.name, adminForm.nim]);
 
+  const isSuperAdmin = user?.role === "super_admin";
+  const visibleTabs = useMemo(() => tabs.filter((item) => !item.superOnly || isSuperAdmin), [isSuperAdmin]);
+
   const filteredTeams = useMemo(() => {
     const q = search.toLowerCase();
     return teams.filter((team) => {
@@ -195,59 +206,72 @@ export function AdminPanel() {
     { label: "Pemenang", value: stats.winners, icon: Megaphone }
   ];
 
-  function loadAdminData(nextToken = token) {
+  async function loadAdminData(nextToken = token) {
     if (!nextToken) return;
     setLoading(true);
     setError("");
     setMessage("");
 
-    Promise.all([api.adminStats(nextToken), api.adminTeams(nextToken), api.adminUsers(nextToken), api.activeEvent()])
-      .then(async ([nextStats, nextTeams, nextUsers, active]) => {
-        const [nextCommittee, nextTimeline, nextRules, nextSubmissionStages, nextFAQs] = await Promise.all([
-          api.committee(active.id),
-          api.timeline(active.id),
-          api.rules(active.id).catch((err) => {
-            if (isNotFoundError(err)) return { ...emptyRules, eventId: active.id };
-            throw err;
-          }),
-          api.submissionStages(nextToken, active.id).catch((err) => {
-            if (isNotFoundError(err)) return [];
-            throw err;
-          }),
-          api.adminFaqs(nextToken, active.id).catch((err) => {
-            if (isNotFoundError(err)) return [];
-            throw err;
-          })
-        ]);
-        setStats(nextStats);
-        setTeams(nextTeams ?? []);
-        setAdminUsers(nextUsers ?? []);
-        setEvent(active);
-        setCommittee(nextCommittee ?? []);
-        setTimeline(nextTimeline ?? []);
-        setTimelineDraft((nextTimeline ?? []).map(timelineToInput));
-        setRules(nextRules);
-        setRulesDraft({
-          minTeamMembers: nextRules.minTeamMembers,
-          maxTeamMembers: nextRules.maxTeamMembers
-        });
-        setSubmissionStageDraft((nextSubmissionStages ?? []).map(submissionStageToInput));
-        setFaqs(nextFAQs ?? []);
-        setFaqForm((current) => ({
-          ...current,
-          eventId: active.id,
-          sortOrder: current.eventId === active.id ? current.sortOrder : (nextFAQs ?? []).length + 1
-        }));
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : "Gagal memuat data admin.");
-      })
-      .finally(() => setLoading(false));
+    try {
+      const [nextStats, nextTeams, nextUsers, active, nextEvents] = await Promise.all([
+        api.adminStats(nextToken),
+        api.adminTeams(nextToken),
+        api.adminUsers(nextToken),
+        api.activeEvent(),
+        api.events()
+      ]);
+      const [nextCommittee, nextTimeline, nextRules, nextSubmissionStages, nextFAQs] = await Promise.all([
+        api.committee(active.id),
+        api.timeline(active.id),
+        api.rules(active.id).catch((err) => {
+          if (isNotFoundError(err)) return { ...emptyRules, eventId: active.id };
+          throw err;
+        }),
+        api.submissionStages(nextToken, active.id).catch((err) => {
+          if (isNotFoundError(err)) return [];
+          throw err;
+        }),
+        api.adminFaqs(nextToken, active.id).catch((err) => {
+          if (isNotFoundError(err)) return [];
+          throw err;
+        })
+      ]);
+      setStats(nextStats);
+      setTeams(nextTeams ?? []);
+      setAdminUsers(nextUsers ?? []);
+      setEvent(active);
+      setEvents(nextEvents ?? []);
+      setCommittee(nextCommittee ?? []);
+      setTimeline(nextTimeline ?? []);
+      setTimelineDraft((nextTimeline ?? []).map(timelineToInput));
+      setRules(nextRules);
+      setRulesDraft({
+        minTeamMembers: nextRules.minTeamMembers,
+        maxTeamMembers: nextRules.maxTeamMembers
+      });
+      setSubmissionStageDraft((nextSubmissionStages ?? []).map(submissionStageToInput));
+      setFaqs(nextFAQs ?? []);
+      setFaqForm((current) => ({
+        ...current,
+        eventId: active.id,
+        sortOrder: current.eventId === active.id ? current.sortOrder : (nextFAQs ?? []).length + 1
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat data admin.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     if (token) loadAdminData(token);
   }, []);
+
+  useEffect(() => {
+    if (!isSuperAdmin && (tab === "event" || tab === "event-switch")) {
+      setTab("overview");
+    }
+  }, [isSuperAdmin, tab]);
 
   async function submitLogin(eventForm: FormEvent<HTMLFormElement>) {
     eventForm.preventDefault();
@@ -259,7 +283,7 @@ export function AdminPanel() {
       setUser(response.user);
       localStorage.setItem("pointproject.adminToken", response.token);
       localStorage.setItem("pointproject.adminUser", JSON.stringify(response.user));
-      loadAdminData(response.token);
+      await loadAdminData(response.token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login admin gagal.");
     } finally {
@@ -303,14 +327,48 @@ export function AdminPanel() {
     setError("");
     try {
       const nextEvent = await api.createEvent(token, eventForm);
-      setEvent(nextEvent);
-      setTimeline([]);
-      setTimelineDraft([]);
-      setMessage(`${nextEvent.name} berhasil dibuat.`);
       await loadAdminData(token);
+      setEventForm({
+        name: "",
+        theme: "",
+        year: nextEvent.year + 1,
+        startDate: "",
+        endDate: "",
+        status: "draft"
+      });
+      setMessage(`${nextEvent.name} berhasil dibuat. Aktifkan dari tab Event Aktif saat siap dipakai.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal membuat event.");
     } finally {
+      setLoading(false);
+    }
+  }
+
+  async function confirmEventAction() {
+    if (!confirmAction) return;
+    const action = confirmAction;
+    setLoading(true);
+    setSwitchingEvent(action.type === "activate");
+    setError("");
+    setMessage("");
+    setConfirmAction(null);
+    try {
+      const nextEvent =
+        action.type === "lock"
+          ? await api.lockEvent(token, action.event.id)
+          : await api.activateEvent(token, action.event.id);
+      await loadAdminData(token);
+      window.dispatchEvent(new CustomEvent("pointproject:event-changed"));
+      setTab(action.type === "activate" ? "overview" : "event-switch");
+      setMessage(
+        action.type === "lock"
+          ? `${nextEvent.name} sudah dikunci permanen dari admin.`
+          : `${nextEvent.name} sekarang menjadi event aktif.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memproses event.");
+    } finally {
+      setSwitchingEvent(false);
       setLoading(false);
     }
   }
@@ -585,11 +643,16 @@ export function AdminPanel() {
 
         {error ? <p className="mb-5 rounded-md bg-coral/10 px-4 py-3 text-sm font-bold text-coral">{error}</p> : null}
         {message ? <p className="mb-5 rounded-md bg-lagoon/10 px-4 py-3 text-sm font-bold text-lagoon">{message}</p> : null}
+        {switchingEvent ? (
+          <div className="mb-5 rounded-lg border border-lagoon/20 bg-lagoon/10 px-4 py-4 text-sm font-bold text-lagoon">
+            Memuat event baru dan menyesuaikan tampilan website...
+          </div>
+        ) : null}
 
         <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
           <aside className="rounded-lg border border-ink/10 bg-white p-2 shadow-soft sm:p-3">
             <nav className="grid gap-1 sm:grid-cols-2 lg:grid-cols-1">
-              {tabs.map((item) => {
+              {visibleTabs.map((item) => {
                 const Icon = item.icon;
                 return (
                   <button
@@ -663,9 +726,103 @@ export function AdminPanel() {
               </div>
             ) : null}
 
+            {tab === "event-switch" ? (
+              <div className="grid gap-5">
+                <article className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-lagoon">Event Aktif Saat Ini</p>
+                      <h2 className="mt-3 break-words text-2xl font-black">{event?.name ?? "Belum ada event aktif"}</h2>
+                      {event ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <StatusPill tone={event.status === "aktif" ? "teal" : "ink"}>{event.status}</StatusPill>
+                          <StatusPill tone={event.lockedAt ? "coral" : "amber"}>
+                            {event.lockedAt ? "Locked" : "Belum locked"}
+                          </StatusPill>
+                          <span className="text-sm font-bold text-ink/55">{formatEventDates(event)}</span>
+                        </div>
+                      ) : null}
+                      <p className="mt-4 max-w-3xl text-sm leading-6 text-ink/65">
+                        Lock event bersifat permanen dari admin. Setelah dikunci, super admin tidak dapat membuka lock lagi.
+                        Untuk mengganti event aktif, lock event lama terlebih dahulu, lalu pilih event baru.
+                      </p>
+                    </div>
+                    {event ? (
+                      <button
+                        type="button"
+                        className="btn-secondary shrink-0 border-coral/30 text-coral hover:bg-coral/10"
+                        disabled={loading || Boolean(event.lockedAt)}
+                        onClick={() => setConfirmAction({ type: "lock", event })}
+                      >
+                        <Lock size={18} />
+                        {event.lockedAt ? "Sudah Locked" : "Lock Event Ini"}
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+
+                <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="text-xl font-black">Pilih Event yang Dipakai Website</h2>
+                      <p className="mt-1 text-sm text-ink/60">Landing page, pendaftaran, dashboard, FAQ, jadwal, dan pengumuman mengikuti event aktif.</p>
+                    </div>
+                    <StatusPill tone="ink">{events.length} event</StatusPill>
+                  </div>
+                  <div className="mt-5 grid gap-3">
+                    {events.map((item) => {
+                      const isCurrent = item.id === event?.id;
+                      const activeEventMustBeLocked = Boolean(event && !event.lockedAt && !isCurrent);
+                      const disabledReason = item.lockedAt
+                        ? "Event locked tidak bisa diaktifkan dari admin."
+                        : activeEventMustBeLocked
+                          ? "Lock event aktif saat ini terlebih dahulu."
+                          : "";
+                      return (
+                        <article key={item.id} className={clsx("rounded-lg border p-4", isCurrent ? "border-lagoon/40 bg-lagoon/5" : "border-ink/10")}>
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <StatusPill tone={item.status === "aktif" ? "teal" : item.status === "draft" ? "amber" : "ink"}>
+                                  {item.status}
+                                </StatusPill>
+                                {item.lockedAt ? <StatusPill tone="coral">Locked</StatusPill> : null}
+                                <span className="text-xs font-bold text-ink/45">{formatEventDates(item)}</span>
+                              </div>
+                              <h3 className="mt-3 break-words font-black">{item.name}</h3>
+                              <p className="mt-1 break-words text-sm leading-6 text-ink/60">{item.theme}</p>
+                              {disabledReason ? <p className="mt-2 text-xs font-bold text-coral">{disabledReason}</p> : null}
+                            </div>
+                            <button
+                              type="button"
+                              className="btn-primary shrink-0"
+                              disabled={loading || isCurrent || Boolean(item.lockedAt) || activeEventMustBeLocked}
+                              onClick={() => setConfirmAction({ type: "activate", event: item })}
+                            >
+                              <Power size={18} />
+                              {isCurrent ? "Sedang Aktif" : "Gunakan Event Ini"}
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                    {!events.length ? (
+                      <article className="rounded-lg border border-dashed border-ink/20 p-8 text-center">
+                        <p className="font-black">Belum ada event.</p>
+                        <p className="mt-2 text-sm text-ink/60">Buat periode baru terlebih dahulu.</p>
+                      </article>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             {tab === "event" ? (
               <form onSubmit={createEvent} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
                 <h2 className="text-xl font-black">Buat Periode Baru</h2>
+                <p className="mt-2 text-sm leading-6 text-ink/60">
+                  Event baru dibuat sebagai draft atau arsip. Untuk menampilkan event baru ke website, gunakan tab Event Aktif.
+                </p>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <TextField label="Nama Event" value={eventForm.name} onChange={(value) => setEventForm((current) => ({ ...current, name: value }))} />
                   <TextField
@@ -694,7 +851,6 @@ export function AdminPanel() {
                       onChange={(event) => setEventForm((current) => ({ ...current, status: event.target.value }))}
                     >
                       <option value="draft">Draft</option>
-                      <option value="aktif">Aktif</option>
                       <option value="arsip">Arsip</option>
                     </select>
                   </div>
@@ -1137,6 +1293,14 @@ export function AdminPanel() {
             ) : null}
           </div>
         </div>
+        {confirmAction ? (
+          <EventActionModal
+            action={confirmAction}
+            loading={loading}
+            onCancel={() => setConfirmAction(null)}
+            onConfirm={confirmEventAction}
+          />
+        ) : null}
       </div>
     </section>
   );
@@ -1178,6 +1342,51 @@ function normalizeTeamDetail(detail: TeamDetail): TeamDetail {
 
 function sortFAQs(items: FAQ[]) {
   return [...items].sort((a, b) => a.sortOrder - b.sortOrder || a.question.localeCompare(b.question));
+}
+
+function formatEventDates(event: Event) {
+  return `${event.year} | ${event.startDate} - ${event.endDate}`;
+}
+
+function EventActionModal({
+  action,
+  loading,
+  onCancel,
+  onConfirm
+}: {
+  action: Exclude<EventAction, null>;
+  loading: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const isLock = action.type === "lock";
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/55 px-4 py-6">
+      <article className="w-full max-w-lg rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+        <div className="flex items-start gap-3">
+          <span className={clsx("grid h-10 w-10 shrink-0 place-items-center rounded-md", isLock ? "bg-coral/10 text-coral" : "bg-lagoon/10 text-lagoon")}>
+            {isLock ? <Lock size={20} /> : <AlertTriangle size={20} />}
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-xl font-black">{isLock ? "Lock event ini?" : "Gunakan event ini?"}</h2>
+            <p className="mt-2 break-words text-sm leading-6 text-ink/65">
+              {isLock
+                ? `${action.event.name} tahun ${action.event.year} akan dikunci permanen dari admin. Setelah dikunci, hanya developer yang bisa membuka lock lewat database.`
+                : `${action.event.name} akan menjadi event aktif. Semua tampilan website akan memakai data event ini setelah proses selesai.`}
+            </p>
+          </div>
+        </div>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" className="btn-secondary" onClick={onCancel} disabled={loading}>
+            Tidak
+          </button>
+          <button type="button" className={isLock ? "btn-secondary border-coral/30 text-coral hover:bg-coral/10" : "btn-primary"} onClick={onConfirm} disabled={loading}>
+            {loading ? "Memproses..." : "Ya"}
+          </button>
+        </div>
+      </article>
+    </div>
+  );
 }
 
 function updateTimelineDraft(

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -20,6 +21,10 @@ type Server struct {
 	store     repository.Store
 	jwtSecret []byte
 }
+
+type contextKey string
+
+const adminRoleContextKey contextKey = "adminRole"
 
 func NewRouter(store repository.Store, jwtSecret string, allowedOrigins []string) http.Handler {
 	if len(allowedOrigins) == 0 {
@@ -66,6 +71,8 @@ func NewRouter(store repository.Store, jwtSecret string, allowedOrigins []string
 			r.Patch("/admin/teams/{teamID}/verify", server.verifyTeam)
 			r.Patch("/admin/teams/{teamID}/stage-access", server.setTeamStageAccess)
 			r.Post("/admin/events", server.createEvent)
+			r.Patch("/admin/events/{eventID}/activate", server.activateEvent)
+			r.Patch("/admin/events/{eventID}/lock", server.lockEvent)
 			r.Put("/admin/events/{eventID}/timeline", server.replaceTimeline)
 			r.Get("/admin/events/{eventID}/rules", server.eventRules)
 			r.Put("/admin/events/{eventID}/rules", server.updateEventRules)
@@ -275,6 +282,9 @@ func (s *Server) setTeamStageAccess(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createEvent(w http.ResponseWriter, r *http.Request) {
+	if !requireSuperAdmin(w, r) {
+		return
+	}
 	var input models.CreateEventRequest
 	if err := decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -286,6 +296,30 @@ func (s *Server) createEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusCreated, event)
+}
+
+func (s *Server) activateEvent(w http.ResponseWriter, r *http.Request) {
+	if !requireSuperAdmin(w, r) {
+		return
+	}
+	event, err := s.store.ActivateEvent(r.Context(), chi.URLParam(r, "eventID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusOK, event)
+}
+
+func (s *Server) lockEvent(w http.ResponseWriter, r *http.Request) {
+	if !requireSuperAdmin(w, r) {
+		return
+	}
+	event, err := s.store.LockEvent(r.Context(), chi.URLParam(r, "eventID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusOK, event)
 }
 
 func (s *Server) replaceTimeline(w http.ResponseWriter, r *http.Request) {
@@ -440,8 +474,23 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 			writeMessage(w, http.StatusUnauthorized, "token admin tidak valid")
 			return
 		}
-		next.ServeHTTP(w, r)
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			writeMessage(w, http.StatusUnauthorized, "token admin tidak valid")
+			return
+		}
+		role, _ := claims["role"].(string)
+		ctx := context.WithValue(r.Context(), adminRoleContextKey, role)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func requireSuperAdmin(w http.ResponseWriter, r *http.Request) bool {
+	if role, _ := r.Context().Value(adminRoleContextKey).(string); role == "super_admin" {
+		return true
+	}
+	writeMessage(w, http.StatusForbidden, "hanya super admin yang dapat mengelola event")
+	return false
 }
 
 func (s *Server) signAdminToken(user models.AdminUser) (string, error) {

@@ -36,5 +36,7 @@ type Store interface {
 	ListTeams(ctx context.Context, filters models.TeamFilters) ([]models.Team, error)
 	UpdateTeamStatus(ctx context.Context, teamID, status string) (models.Team, error)
 	CreateEvent(ctx context.Context, input models.CreateEventRequest) (models.Event, error)
+	ActivateEvent(ctx context.Context, eventID string) (models.Event, error)
+	LockEvent(ctx context.Context, eventID string) (models.Event, error)
 	CreateAnnouncement(ctx context.Context, input models.CreateAnnouncementRequest) (models.Announcement, error)
 }
