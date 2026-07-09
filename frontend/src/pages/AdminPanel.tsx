@@ -626,9 +626,12 @@ export function AdminPanel() {
             ) : null}
 
             {tab === "submission" ? (
-              <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
-                <h2 className="text-xl font-black">Rekap Submission</h2>
-                <TeamTable teams={teams} onVerify={verify} onDetail={openTeamDetail} loading={loading} compact />
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+                <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                  <h2 className="text-xl font-black">Rekap Submission</h2>
+                  <TeamTable teams={teams} onVerify={verify} onDetail={openTeamDetail} loading={loading} compact />
+                </div>
+                <TeamDetailPanel detail={selectedTeam} onClose={() => setSelectedTeam(null)} />
               </div>
             ) : null}
 
