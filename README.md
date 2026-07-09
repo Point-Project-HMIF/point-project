@@ -1,11 +1,11 @@
-# Point Project 4.0 Website
+# point-project
 
-Implementasi awal sesuai PRD untuk website kompetisi UI/UX Design Point Project 4.0 HMIF ITERA.
+Website Point Project 4.0 HMIF ITERA untuk pendaftaran, submission, pengumuman, arsip multi-tahun, dan panel admin.
 
 Struktur proyek dipisah menjadi:
 
 - `frontend/` - React, TypeScript, Vite, Tailwind CSS
-- `backend/` - Go REST API, PostgreSQL-ready
+- `backend/` - Go REST API dan PostgreSQL
 
 ## Menjalankan Backend
 
@@ -31,8 +31,6 @@ npm run dev
 Default frontend membaca API dari `http://localhost:8080/api`.
 
 ## Akun Admin Awal
-
-Saat memakai mode in-memory:
 
 - Email awal: `admin@pointproject.id`
 - Password awal: `admin12345`
