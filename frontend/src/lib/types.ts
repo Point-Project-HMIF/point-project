@@ -61,6 +61,43 @@ export type FAQPayload = {
   isPublished: boolean;
 };
 
+export type EventRules = {
+  eventId: string;
+  minTeamMembers: number;
+  maxTeamMembers: number;
+};
+
+export type EventRulesPayload = {
+  minTeamMembers: number;
+  maxTeamMembers: number;
+};
+
+export type SubmissionStage = {
+  id: string;
+  eventId: string;
+  key: string;
+  label: string;
+  sortOrder: number;
+  isOpen: boolean;
+  requiresApproval: boolean;
+};
+
+export type SubmissionStageInput = {
+  id?: string;
+  key: string;
+  label: string;
+  sortOrder: number;
+  isOpen: boolean;
+  requiresApproval: boolean;
+};
+
+export type TeamSubmissionStage = {
+  stage: SubmissionStage;
+  isAllowed: boolean;
+  canSubmit: boolean;
+  reason: string;
+};
+
 export type TeamMember = {
   name: string;
   email: string;
@@ -144,6 +181,8 @@ export type ParticipantDashboard = {
   team: Team;
   submissions: Submission[];
   announcements: Announcement[];
+  rules: EventRules;
+  submissionStages: TeamSubmissionStage[];
 };
 
 export type TeamDetail = {
@@ -151,6 +190,7 @@ export type TeamDetail = {
   category: Category;
   team: Team;
   submissions: Submission[];
+  submissionStages: TeamSubmissionStage[];
 };
 
 export type AdminUser = {

@@ -67,6 +67,52 @@ type FAQInput struct {
 	IsPublished bool   `json:"isPublished"`
 }
 
+type EventRules struct {
+	EventID        string `json:"eventId"`
+	MinTeamMembers int    `json:"minTeamMembers"`
+	MaxTeamMembers int    `json:"maxTeamMembers"`
+}
+
+type EventRulesRequest struct {
+	MinTeamMembers int `json:"minTeamMembers"`
+	MaxTeamMembers int `json:"maxTeamMembers"`
+}
+
+type SubmissionStage struct {
+	ID               string `json:"id"`
+	EventID          string `json:"eventId"`
+	Key              string `json:"key"`
+	Label            string `json:"label"`
+	SortOrder        int    `json:"sortOrder"`
+	IsOpen           bool   `json:"isOpen"`
+	RequiresApproval bool   `json:"requiresApproval"`
+}
+
+type SubmissionStageInput struct {
+	ID               string `json:"id"`
+	Key              string `json:"key"`
+	Label            string `json:"label"`
+	SortOrder        int    `json:"sortOrder"`
+	IsOpen           bool   `json:"isOpen"`
+	RequiresApproval bool   `json:"requiresApproval"`
+}
+
+type ReplaceSubmissionStagesRequest struct {
+	Items []SubmissionStageInput `json:"items"`
+}
+
+type TeamSubmissionStage struct {
+	Stage     SubmissionStage `json:"stage"`
+	IsAllowed bool            `json:"isAllowed"`
+	CanSubmit bool            `json:"canSubmit"`
+	Reason    string          `json:"reason"`
+}
+
+type TeamStageAccessRequest struct {
+	StageID   string `json:"stageId"`
+	IsAllowed bool   `json:"isAllowed"`
+}
+
 type TeamMember struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
@@ -145,18 +191,21 @@ type Announcement struct {
 }
 
 type Dashboard struct {
-	Event         Event          `json:"event"`
-	Category      Category       `json:"category"`
-	Team          Team           `json:"team"`
-	Submissions   []Submission   `json:"submissions"`
-	Announcements []Announcement `json:"announcements"`
+	Event            Event                 `json:"event"`
+	Category         Category              `json:"category"`
+	Team             Team                  `json:"team"`
+	Submissions      []Submission          `json:"submissions"`
+	Announcements    []Announcement        `json:"announcements"`
+	Rules            EventRules            `json:"rules"`
+	SubmissionStages []TeamSubmissionStage `json:"submissionStages"`
 }
 
 type TeamDetail struct {
-	Event       Event        `json:"event"`
-	Category    Category     `json:"category"`
-	Team        Team         `json:"team"`
-	Submissions []Submission `json:"submissions"`
+	Event            Event                 `json:"event"`
+	Category         Category              `json:"category"`
+	Team             Team                  `json:"team"`
+	Submissions      []Submission          `json:"submissions"`
+	SubmissionStages []TeamSubmissionStage `json:"submissionStages"`
 }
 
 type AdminUser struct {

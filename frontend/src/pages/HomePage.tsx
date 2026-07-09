@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api, isNotFoundError } from "../lib/api";
-import type { Announcement, Category, CommitteeMember, Event, FAQ, TimelineItem } from "../lib/types";
+import type { Announcement, Category, CommitteeMember, Event, EventRules, FAQ, TimelineItem } from "../lib/types";
 
 export function HomePage() {
   const [event, setEvent] = useState<Event | null>(null);
@@ -23,6 +23,7 @@ export function HomePage() {
   const [committee, setCommittee] = useState<CommitteeMember[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
+  const [rules, setRules] = useState<EventRules | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -30,11 +31,15 @@ export function HomePage() {
     api
       .activeEvent()
       .then(async (active) => {
-        const [nextCategories, nextTimeline, nextCommittee, nextAnnouncements, nextFAQs] = await Promise.all([
+        const [nextCategories, nextTimeline, nextCommittee, nextAnnouncements, nextRules, nextFAQs] = await Promise.all([
           api.categories(active.id),
           api.timeline(active.id),
           api.committee(active.id),
           api.announcements(active.id),
+          api.rules(active.id).catch((err) => {
+            if (isNotFoundError(err)) return { eventId: active.id, minTeamMembers: 2, maxTeamMembers: 3 };
+            throw err;
+          }),
           api.faqs(active.id).catch((err) => {
             if (isNotFoundError(err)) return [];
             throw err;
@@ -46,6 +51,7 @@ export function HomePage() {
         setTimeline(nextTimeline ?? []);
         setCommittee(nextCommittee ?? []);
         setAnnouncements(nextAnnouncements ?? []);
+        setRules(nextRules);
         setFaqs(nextFAQs ?? []);
       })
       .catch((err) => {
@@ -277,6 +283,14 @@ export function HomePage() {
               body="Daftar ini dikelola langsung oleh admin atau panitia untuk event aktif."
             />
             <div className="mt-8 grid gap-4">
+              {rules ? (
+                <article className="rounded-lg border border-lagoon/20 bg-lagoon/5 p-5">
+                  <h3 className="font-black">Jumlah peserta per tim</h3>
+                  <p className="mt-2 text-sm leading-6 text-ink/65">
+                    Minimal {rules.minTeamMembers} peserta dan maksimal {rules.maxTeamMembers} peserta, termasuk ketua.
+                  </p>
+                </article>
+              ) : null}
               {faqs.map((faq) => (
                 <article key={faq.id} className="rounded-lg border border-ink/10 bg-cloud p-5">
                   <h3 className="font-black">{faq.question}</h3>

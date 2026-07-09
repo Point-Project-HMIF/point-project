@@ -30,8 +30,10 @@ import type {
   CommitteeMember,
   CreateAdminUserPayload,
   Event,
+  EventRules,
   FAQ,
   FAQPayload,
+  SubmissionStageInput,
   Team,
   TeamDetail,
   TimelineItem,
@@ -67,6 +69,20 @@ const emptyTimelineItem = (sortOrder: number): TimelineItemInput => ({
   endDate: "",
   description: "",
   sortOrder
+});
+
+const emptyRules: EventRules = {
+  eventId: "",
+  minTeamMembers: 2,
+  maxTeamMembers: 3
+};
+
+const emptySubmissionStage = (sortOrder: number): SubmissionStageInput => ({
+  key: "",
+  label: "",
+  sortOrder,
+  isOpen: true,
+  requiresApproval: sortOrder > 1
 });
 
 const emptyFAQForm = (eventId = "", sortOrder = 1): FAQPayload => ({
@@ -106,9 +122,12 @@ export function AdminPanel() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [event, setEvent] = useState<Event | null>(null);
   const [committee, setCommittee] = useState<CommitteeMember[]>([]);
+  const [rules, setRules] = useState<EventRules>(emptyRules);
+  const [rulesDraft, setRulesDraft] = useState({ minTeamMembers: 2, maxTeamMembers: 3 });
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [timelineDraft, setTimelineDraft] = useState<TimelineItemInput[]>([]);
+  const [submissionStageDraft, setSubmissionStageDraft] = useState<SubmissionStageInput[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<TeamDetail | null>(null);
   const [search, setSearch] = useState("");
@@ -184,9 +203,17 @@ export function AdminPanel() {
 
     Promise.all([api.adminStats(nextToken), api.adminTeams(nextToken), api.adminUsers(nextToken), api.activeEvent()])
       .then(async ([nextStats, nextTeams, nextUsers, active]) => {
-        const [nextCommittee, nextTimeline, nextFAQs] = await Promise.all([
+        const [nextCommittee, nextTimeline, nextRules, nextSubmissionStages, nextFAQs] = await Promise.all([
           api.committee(active.id),
           api.timeline(active.id),
+          api.rules(active.id).catch((err) => {
+            if (isNotFoundError(err)) return { ...emptyRules, eventId: active.id };
+            throw err;
+          }),
+          api.submissionStages(nextToken, active.id).catch((err) => {
+            if (isNotFoundError(err)) return [];
+            throw err;
+          }),
           api.adminFaqs(nextToken, active.id).catch((err) => {
             if (isNotFoundError(err)) return [];
             throw err;
@@ -199,6 +226,12 @@ export function AdminPanel() {
         setCommittee(nextCommittee ?? []);
         setTimeline(nextTimeline ?? []);
         setTimelineDraft((nextTimeline ?? []).map(timelineToInput));
+        setRules(nextRules);
+        setRulesDraft({
+          minTeamMembers: nextRules.minTeamMembers,
+          maxTeamMembers: nextRules.maxTeamMembers
+        });
+        setSubmissionStageDraft((nextSubmissionStages ?? []).map(submissionStageToInput));
         setFaqs(nextFAQs ?? []);
         setFaqForm((current) => ({
           ...current,
@@ -297,6 +330,65 @@ export function AdminPanel() {
       setMessage("Jadwal berhasil diperbarui.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan jadwal.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveRules() {
+    if (!event) {
+      setError("Event aktif belum dimuat.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const nextRules = await api.updateRules(token, event.id, rulesDraft);
+      setRules(nextRules);
+      setRulesDraft({
+        minTeamMembers: nextRules.minTeamMembers,
+        maxTeamMembers: nextRules.maxTeamMembers
+      });
+      setMessage("Aturan jumlah anggota berhasil diperbarui.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan aturan anggota.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveSubmissionStages() {
+    if (!event) {
+      setError("Event aktif belum dimuat.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const normalized = submissionStageDraft.map((item, index) => ({ ...item, sortOrder: index + 1 }));
+      const nextStages = await api.updateSubmissionStages(token, event.id, normalized);
+      setSubmissionStageDraft(nextStages.map(submissionStageToInput));
+      setMessage("Tahap upload karya berhasil diperbarui.");
+      if (selectedTeam) {
+        const detail = await api.adminTeamDetail(token, selectedTeam.team.id);
+        setSelectedTeam(normalizeTeamDetail(detail));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan tahap upload karya.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function setStageAccess(teamId: string, stageId: string, isAllowed: boolean) {
+    setLoading(true);
+    setError("");
+    try {
+      const detail = await api.updateTeamStageAccess(token, teamId, stageId, isAllowed);
+      setSelectedTeam(normalizeTeamDetail(detail));
+      setMessage(isAllowed ? "Akses tahap tim dibuka." : "Akses tahap tim ditutup.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memperbarui akses tahap tim.");
     } finally {
       setLoading(false);
     }
@@ -558,7 +650,15 @@ export function AdminPanel() {
                       selectedTeamId={selectedTeam?.team.id}
                     />
                   </div>
-                  {selectedTeam ? <TeamDetailPanel detail={selectedTeam} onClose={() => setSelectedTeam(null)} embedded /> : null}
+                  {selectedTeam ? (
+                    <TeamDetailPanel
+                      detail={selectedTeam}
+                      onClose={() => setSelectedTeam(null)}
+                      onStageAccess={setStageAccess}
+                      loading={loading}
+                      embedded
+                    />
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -735,12 +835,114 @@ export function AdminPanel() {
                     </article>
                   ) : null}
                 </div>
+
+                <div className="mt-8 border-t border-ink/10 pt-8">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="text-xl font-black">Tahap Upload Karya</h2>
+                      <p className="mt-1 text-sm text-ink/60">Tahap ini menentukan pilihan upload di dashboard peserta.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setSubmissionStageDraft((current) => [...current, emptySubmissionStage(current.length + 1)])}
+                      >
+                        <Plus size={18} />
+                        Tambah Tahap
+                      </button>
+                      <button type="button" className="btn-primary" onClick={saveSubmissionStages} disabled={loading}>
+                        <Save size={18} />
+                        Simpan Tahap
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-5 grid gap-4">
+                    {submissionStageDraft.map((item, index) => (
+                      <div key={index} className="rounded-lg border border-ink/10 bg-cloud p-4">
+                        <div className="mb-4 flex items-center justify-between">
+                          <p className="text-sm font-black">Tahap Upload {index + 1}</p>
+                          <button
+                            type="button"
+                            className="btn-secondary px-3 py-2"
+                            onClick={() => setSubmissionStageDraft((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                          >
+                            <Trash2 size={16} />
+                            Hapus
+                          </button>
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <TextField label="Nama Tahap" value={item.label} onChange={(value) => updateSubmissionStageDraft(index, "label", value, setSubmissionStageDraft)} />
+                          <TextField label="Key Tahap" value={item.key} onChange={(value) => updateSubmissionStageDraft(index, "key", value, setSubmissionStageDraft)} placeholder="awal, final, semifinal" />
+                          <TextField label="Urutan" type="number" value={String(index + 1)} onChange={() => undefined} disabled />
+                          <label className="flex items-center gap-3 rounded-md bg-white px-4 py-3 text-sm font-bold">
+                            <input
+                              type="checkbox"
+                              checked={item.isOpen}
+                              onChange={(event) => updateSubmissionStageDraft(index, "isOpen", event.target.checked, setSubmissionStageDraft)}
+                            />
+                            Tahap dibuka
+                          </label>
+                          <label className="flex items-center gap-3 rounded-md bg-white px-4 py-3 text-sm font-bold md:col-span-2">
+                            <input
+                              type="checkbox"
+                              checked={item.requiresApproval}
+                              onChange={(event) => updateSubmissionStageDraft(index, "requiresApproval", event.target.checked, setSubmissionStageDraft)}
+                            />
+                            Wajib lolos/diberi akses oleh admin sebelum peserta bisa submit
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                    {!submissionStageDraft.length ? (
+                      <article className="rounded-lg border border-dashed border-ink/20 p-8 text-center">
+                        <p className="font-black">Belum ada tahap upload.</p>
+                        <p className="mt-2 text-sm text-ink/60">Tambahkan minimal satu tahap agar peserta bisa mengirim karya.</p>
+                      </article>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             ) : null}
 
             {tab === "faq" ? (
-              <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
-                <form onSubmit={saveFAQ} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+              <div className="grid gap-5">
+                <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h2 className="text-xl font-black">Aturan Jumlah Peserta</h2>
+                      <p className="mt-1 text-sm text-ink/60">
+                        Batas ini dihitung termasuk ketua. Sistem akan menolak pendaftaran di luar batas ini.
+                      </p>
+                    </div>
+                    <StatusPill tone="teal">
+                      {rules.minTeamMembers}-{rules.maxTeamMembers} orang
+                    </StatusPill>
+                  </div>
+                  <div className="mt-5 grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+                    <TextField
+                      label="Minimal Peserta"
+                      type="number"
+                      value={String(rulesDraft.minTeamMembers)}
+                      onChange={(value) => setRulesDraft((current) => ({ ...current, minTeamMembers: Number(value) }))}
+                    />
+                    <TextField
+                      label="Maksimal Peserta"
+                      type="number"
+                      value={String(rulesDraft.maxTeamMembers)}
+                      onChange={(value) => setRulesDraft((current) => ({ ...current, maxTeamMembers: Number(value) }))}
+                    />
+                    <div className="flex items-end">
+                      <button type="button" className="btn-primary w-full" onClick={saveRules} disabled={loading || !event}>
+                        <Save size={18} />
+                        Simpan
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+                  <form onSubmit={saveFAQ} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
                   <h2 className="text-xl font-black">{editingFaqId ? "Edit FAQ" : "Tambah FAQ / Aturan"}</h2>
                   <div className="mt-5 grid gap-4">
                     <div>
@@ -847,6 +1049,7 @@ export function AdminPanel() {
                       </article>
                     ) : null}
                   </div>
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -865,7 +1068,15 @@ export function AdminPanel() {
                       compact
                     />
                   </div>
-                  {selectedTeam ? <TeamDetailPanel detail={selectedTeam} onClose={() => setSelectedTeam(null)} embedded /> : null}
+                  {selectedTeam ? (
+                    <TeamDetailPanel
+                      detail={selectedTeam}
+                      onClose={() => setSelectedTeam(null)}
+                      onStageAccess={setStageAccess}
+                      loading={loading}
+                      embedded
+                    />
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -942,6 +1153,17 @@ function timelineToInput(item: TimelineItem): TimelineItemInput {
   };
 }
 
+function submissionStageToInput(item: SubmissionStageInput): SubmissionStageInput {
+  return {
+    id: item.id,
+    key: item.key,
+    label: item.label,
+    sortOrder: item.sortOrder,
+    isOpen: item.isOpen,
+    requiresApproval: item.requiresApproval
+  };
+}
+
 function normalizeTeamDetail(detail: TeamDetail): TeamDetail {
   return {
     ...detail,
@@ -949,7 +1171,8 @@ function normalizeTeamDetail(detail: TeamDetail): TeamDetail {
       ...detail.team,
       members: detail.team.members ?? []
     },
-    submissions: detail.submissions ?? []
+    submissions: detail.submissions ?? [],
+    submissionStages: detail.submissionStages ?? []
   };
 }
 
@@ -964,6 +1187,17 @@ function updateTimelineDraft(
   setTimelineDraft: Dispatch<SetStateAction<TimelineItemInput[]>>
 ) {
   setTimelineDraft((current) =>
+    current.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value } : item))
+  );
+}
+
+function updateSubmissionStageDraft<K extends Exclude<keyof SubmissionStageInput, "id" | "sortOrder">>(
+  index: number,
+  key: K,
+  value: SubmissionStageInput[K],
+  setSubmissionStageDraft: Dispatch<SetStateAction<SubmissionStageInput[]>>
+) {
+  setSubmissionStageDraft((current) =>
     current.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value } : item))
   );
 }
@@ -1033,10 +1267,14 @@ function TextAreaField({
 function TeamDetailPanel({
   detail,
   onClose,
+  onStageAccess,
+  loading,
   embedded = false
 }: {
   detail: TeamDetail;
   onClose: () => void;
+  onStageAccess: (teamId: string, stageId: string, isAllowed: boolean) => void;
+  loading: boolean;
   embedded?: boolean;
 }) {
   return (
@@ -1104,6 +1342,39 @@ function TeamDetailPanel({
             </div>
           ))}
           {!detail.submissions.length ? <p className="text-sm text-ink/60">Belum ada submission.</p> : null}
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <p className="text-sm font-black">Akses Tahap Upload</p>
+        <div className="mt-3 grid gap-3">
+          {detail.submissionStages.map((item) => (
+            <div key={item.stage.id} className="rounded-md border border-ink/10 p-3 text-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="flex flex-wrap gap-2">
+                    <StatusPill tone={item.canSubmit ? "teal" : "amber"}>
+                      {item.canSubmit ? "Bisa Submit" : "Tertutup"}
+                    </StatusPill>
+                    {item.stage.requiresApproval ? <StatusPill tone={item.isAllowed ? "teal" : "ink"}>{item.isAllowed ? "Lolos" : "Belum Lolos"}</StatusPill> : null}
+                  </div>
+                  <p className="mt-3 font-black">{item.stage.label}</p>
+                  <p className="mt-1 text-ink/60">{item.reason || "Tahap terbuka untuk tim ini."}</p>
+                </div>
+                {item.stage.requiresApproval ? (
+                  <button
+                    type="button"
+                    className="btn-secondary px-3 py-2"
+                    disabled={loading}
+                    onClick={() => onStageAccess(detail.team.id, item.stage.id, !item.isAllowed)}
+                  >
+                    {item.isAllowed ? "Tutup Akses" : "Buka Akses"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+          {!detail.submissionStages.length ? <p className="text-sm text-ink/60">Belum ada tahap upload untuk event ini.</p> : null}
         </div>
       </div>
     </article>

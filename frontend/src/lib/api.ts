@@ -8,11 +8,15 @@ import type {
   Event,
   FAQ,
   FAQPayload,
+  EventRules,
+  EventRulesPayload,
   LoginResponse,
   ParticipantDashboard,
   RegistrationPayload,
   Submission,
   SubmissionPayload,
+  SubmissionStage,
+  SubmissionStageInput,
   Team,
   TeamDetail,
   TimelineItemInput,
@@ -59,6 +63,7 @@ export const api = {
   categories: (eventId: string) => request<Category[]>(`/events/${eventId}/categories`),
   timeline: (eventId: string) => request<TimelineItem[]>(`/events/${eventId}/timeline`),
   committee: (eventId: string) => request<CommitteeMember[]>(`/events/${eventId}/committee`),
+  rules: (eventId: string) => request<EventRules>(`/events/${eventId}/rules`),
   faqs: (eventId: string) => request<FAQ[]>(`/events/${eventId}/faqs`),
   announcements: (eventId: string, type = "") =>
     request<Announcement[]>(`/events/${eventId}/announcements${type ? `?type=${type}` : ""}`),
@@ -93,6 +98,22 @@ export const api = {
     request<TimelineItem[]>(
       `/admin/events/${eventId}/timeline`,
       { method: "PUT", body: JSON.stringify({ items }) },
+      token
+    ),
+  updateRules: (token: string, eventId: string, payload: EventRulesPayload) =>
+    request<EventRules>(`/admin/events/${eventId}/rules`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  submissionStages: (token: string, eventId: string) =>
+    request<SubmissionStage[]>(`/admin/events/${eventId}/submission-stages`, {}, token),
+  updateSubmissionStages: (token: string, eventId: string, items: SubmissionStageInput[]) =>
+    request<SubmissionStage[]>(
+      `/admin/events/${eventId}/submission-stages`,
+      { method: "PUT", body: JSON.stringify({ items }) },
+      token
+    ),
+  updateTeamStageAccess: (token: string, teamId: string, stageId: string, isAllowed: boolean) =>
+    request<TeamDetail>(
+      `/admin/teams/${teamId}/stage-access`,
+      { method: "PATCH", body: JSON.stringify({ stageId, isAllowed }) },
       token
     ),
   adminFaqs: (token: string, eventId: string) => request<FAQ[]>(`/admin/events/${eventId}/faqs`, {}, token),

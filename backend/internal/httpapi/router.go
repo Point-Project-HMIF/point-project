@@ -50,6 +50,7 @@ func NewRouter(store repository.Store, jwtSecret string, allowedOrigins []string
 		r.Get("/events/{eventID}/categories", server.listCategories)
 		r.Get("/events/{eventID}/timeline", server.listTimeline)
 		r.Get("/events/{eventID}/committee", server.listCommittee)
+		r.Get("/events/{eventID}/rules", server.eventRules)
 		r.Get("/events/{eventID}/faqs", server.listFAQs)
 		r.Get("/events/{eventID}/announcements", server.listAnnouncements)
 		r.Post("/registrations", server.createRegistration)
@@ -63,8 +64,13 @@ func NewRouter(store repository.Store, jwtSecret string, allowedOrigins []string
 			r.Get("/admin/teams", server.listTeams)
 			r.Get("/admin/teams/{teamID}", server.teamDetail)
 			r.Patch("/admin/teams/{teamID}/verify", server.verifyTeam)
+			r.Patch("/admin/teams/{teamID}/stage-access", server.setTeamStageAccess)
 			r.Post("/admin/events", server.createEvent)
 			r.Put("/admin/events/{eventID}/timeline", server.replaceTimeline)
+			r.Get("/admin/events/{eventID}/rules", server.eventRules)
+			r.Put("/admin/events/{eventID}/rules", server.updateEventRules)
+			r.Get("/admin/events/{eventID}/submission-stages", server.listSubmissionStages)
+			r.Put("/admin/events/{eventID}/submission-stages", server.replaceSubmissionStages)
 			r.Get("/admin/events/{eventID}/faqs", server.listAdminFAQs)
 			r.Post("/admin/faqs", server.createFAQ)
 			r.Put("/admin/faqs/{faqID}", server.updateFAQ)
@@ -123,6 +129,15 @@ func (s *Server) listCommittee(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, committee)
 }
 
+func (s *Server) eventRules(w http.ResponseWriter, r *http.Request) {
+	rules, err := s.store.GetEventRules(r.Context(), chi.URLParam(r, "eventID"))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeData(w, http.StatusOK, rules)
+}
+
 func (s *Server) listFAQs(w http.ResponseWriter, r *http.Request) {
 	faqs, err := s.store.ListFAQs(r.Context(), chi.URLParam(r, "eventID"), false)
 	if err != nil {
@@ -147,8 +162,8 @@ func (s *Server) createRegistration(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.LeaderEmail) == "" || strings.TrimSpace(input.Institution) == "" {
-		writeMessage(w, http.StatusBadRequest, "nama tim, email ketua, dan asal instansi wajib diisi")
+	if strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.LeaderName) == "" || strings.TrimSpace(input.LeaderEmail) == "" || strings.TrimSpace(input.Institution) == "" {
+		writeMessage(w, http.StatusBadRequest, "nama tim, nama ketua, email ketua, dan asal instansi wajib diisi")
 		return
 	}
 	team, err := s.store.CreateTeam(r.Context(), input)
@@ -245,6 +260,20 @@ func (s *Server) verifyTeam(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, team)
 }
 
+func (s *Server) setTeamStageAccess(w http.ResponseWriter, r *http.Request) {
+	var input models.TeamStageAccessRequest
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	detail, err := s.store.SetTeamStageAccess(r.Context(), chi.URLParam(r, "teamID"), input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusOK, detail)
+}
+
 func (s *Server) createEvent(w http.ResponseWriter, r *http.Request) {
 	var input models.CreateEventRequest
 	if err := decodeJSON(r, &input); err != nil {
@@ -271,6 +300,43 @@ func (s *Server) replaceTimeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, items)
+}
+
+func (s *Server) updateEventRules(w http.ResponseWriter, r *http.Request) {
+	var input models.EventRulesRequest
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	rules, err := s.store.UpdateEventRules(r.Context(), chi.URLParam(r, "eventID"), input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusOK, rules)
+}
+
+func (s *Server) listSubmissionStages(w http.ResponseWriter, r *http.Request) {
+	stages, err := s.store.ListSubmissionStages(r.Context(), chi.URLParam(r, "eventID"))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeData(w, http.StatusOK, stages)
+}
+
+func (s *Server) replaceSubmissionStages(w http.ResponseWriter, r *http.Request) {
+	var input models.ReplaceSubmissionStagesRequest
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	stages, err := s.store.ReplaceSubmissionStages(r.Context(), chi.URLParam(r, "eventID"), input.Items)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusOK, stages)
 }
 
 func (s *Server) listAdminFAQs(w http.ResponseWriter, r *http.Request) {

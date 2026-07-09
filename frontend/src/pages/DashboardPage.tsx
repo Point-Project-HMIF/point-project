@@ -10,7 +10,7 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [submission, setSubmission] = useState<SubmissionPayload>({
-    stage: "final",
+    stage: "awal",
     proposalUrl: "",
     prototypeUrl: "",
     pptUrl: "",
@@ -20,6 +20,9 @@ export function DashboardPage() {
 
   const verified = dashboard?.team.verificationStatus === "verified";
   const statusTone = verified ? "teal" : dashboard?.team.verificationStatus === "rejected" ? "coral" : "amber";
+  const submissionStages = dashboard?.submissionStages ?? [];
+  const selectedStage = submissionStages.find((item) => item.stage.key === submission.stage);
+  const firstAllowedStage = submissionStages.find((item) => item.canSubmit);
   const finalist = useMemo(
     () =>
       dashboard?.announcements.some((announcement) =>
@@ -38,7 +41,10 @@ export function DashboardPage() {
     api
       .participantDashboard(nextTeamId)
       .then((nextDashboard) => {
-        setDashboard(normalizeDashboard(nextDashboard));
+        const normalized = normalizeDashboard(nextDashboard);
+        setDashboard(normalized);
+        const nextStage = normalized.submissionStages.find((item) => item.canSubmit)?.stage.key ?? normalized.submissionStages[0]?.stage.key ?? "awal";
+        setSubmission((current) => ({ ...current, stage: nextStage }));
         localStorage.setItem("pointproject.teamId", nextTeamId);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Dashboard tidak ditemukan."))
@@ -56,11 +62,20 @@ export function DashboardPage() {
       setError("Muat dashboard tim terlebih dahulu.");
       return;
     }
+    const permission = dashboard.submissionStages.find((item) => item.stage.key === submission.stage);
+    if (!permission?.canSubmit) {
+      setError(permission?.reason || "Tahap upload ini belum tersedia untuk tim kamu.");
+      return;
+    }
     setLoading(true);
     try {
       await api.submitWork(dashboard.team.id, submission);
-      await api.participantDashboard(dashboard.team.id).then((nextDashboard) => setDashboard(normalizeDashboard(nextDashboard)));
-      setSubmission({ stage: "final", proposalUrl: "", prototypeUrl: "", pptUrl: "", reportUrl: "", posterUrl: "" });
+      await api.participantDashboard(dashboard.team.id).then((nextDashboard) => {
+        const normalized = normalizeDashboard(nextDashboard);
+        setDashboard(normalized);
+        const nextStage = normalized.submissionStages.find((item) => item.canSubmit)?.stage.key ?? submission.stage;
+        setSubmission({ stage: nextStage, proposalUrl: "", prototypeUrl: "", pptUrl: "", reportUrl: "", posterUrl: "" });
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission gagal dikirim.");
     } finally {
@@ -119,6 +134,9 @@ export function DashboardPage() {
                 </p>
                 <p className="text-sm">
                   <span className="font-bold text-ink/55">ID Tim:</span> {dashboard.team.id}
+                </p>
+                <p className="text-sm">
+                  <span className="font-bold text-ink/55">Jumlah Anggota:</span> {dashboard.team.members.length} orang
                 </p>
               </div>
             </article>
@@ -217,9 +235,13 @@ export function DashboardPage() {
                     value={submission.stage}
                     onChange={(event) => setSubmission((current) => ({ ...current, stage: event.target.value }))}
                   >
-                    <option value="awal">Awal</option>
-                    <option value="final">Final</option>
+                    {submissionStages.map((item) => (
+                      <option key={item.stage.id} value={item.stage.key} disabled={!item.canSubmit}>
+                        {item.stage.label}
+                      </option>
+                    ))}
                   </select>
+                  {!submissionStages.length ? <p className="mt-2 text-xs font-bold text-coral">Belum ada tahap upload dari admin.</p> : null}
                 </div>
                 {[
                   ["proposalUrl", "Link Proposal"],
@@ -242,8 +264,16 @@ export function DashboardPage() {
                   </div>
                 ))}
               </div>
+              {selectedStage && !selectedStage.canSubmit ? (
+                <p className="mt-4 rounded-md bg-sun/20 px-4 py-3 text-sm font-bold text-amber-900">{selectedStage.reason}</p>
+              ) : null}
+              {!firstAllowedStage && submissionStages.length ? (
+                <p className="mt-4 rounded-md bg-sun/20 px-4 py-3 text-sm font-bold text-amber-900">
+                  Belum ada tahap upload yang terbuka untuk tim kamu.
+                </p>
+              ) : null}
               <div className="mt-5 flex justify-end">
-                <button className="btn-primary" disabled={loading}>
+                <button className="btn-primary" disabled={loading || !selectedStage?.canSubmit}>
                   <Send size={18} />
                   Kirim Submission
                 </button>
@@ -265,6 +295,8 @@ function normalizeDashboard(dashboard: ParticipantDashboard): ParticipantDashboa
       members: dashboard.team.members ?? []
     },
     submissions: dashboard.submissions ?? [],
-    announcements: dashboard.announcements ?? []
+    announcements: dashboard.announcements ?? [],
+    rules: dashboard.rules ?? { eventId: dashboard.event.id, minTeamMembers: 2, maxTeamMembers: 3 },
+    submissionStages: dashboard.submissionStages ?? []
   };
 }

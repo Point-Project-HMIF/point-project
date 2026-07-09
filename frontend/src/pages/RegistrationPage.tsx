@@ -3,7 +3,7 @@ import { Check, ChevronLeft, ChevronRight, Send, Trash2, UserPlus } from "lucide
 import clsx from "clsx";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api } from "../lib/api";
-import type { Category, Event, RegistrationPayload, Team, TeamMember } from "../lib/types";
+import type { Category, Event, EventRules, RegistrationPayload, Team, TeamMember } from "../lib/types";
 
 const steps = ["Data Tim", "Anggota", "Kategori", "Upload"];
 
@@ -12,8 +12,9 @@ const emptyMember = (): TeamMember => ({ name: "", email: "", role: "" });
 export function RegistrationPage() {
   const [event, setEvent] = useState<Event | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [rules, setRules] = useState<EventRules>({ eventId: "", minTeamMembers: 2, maxTeamMembers: 3 });
   const [step, setStep] = useState(0);
-  const [members, setMembers] = useState<TeamMember[]>([emptyMember(), emptyMember()]);
+  const [members, setMembers] = useState<TeamMember[]>([emptyMember()]);
   const [form, setForm] = useState<RegistrationPayload>({
     eventId: "",
     categoryId: "",
@@ -36,10 +37,12 @@ export function RegistrationPage() {
     api
       .activeEvent()
       .then(async (active) => {
-        const nextCategories = await api.categories(active.id);
+        const [nextCategories, nextRules] = await Promise.all([api.categories(active.id), api.rules(active.id)]);
         if (!alive) return;
         setEvent(active);
+        setRules(nextRules);
         setCategories(nextCategories);
+        setMembers(Array.from({ length: Math.max(nextRules.minTeamMembers - 1, 0) }, emptyMember));
         setForm((current) => ({
           ...current,
           eventId: active.id,
@@ -59,6 +62,9 @@ export function RegistrationPage() {
     () => categories.find((category) => category.id === form.categoryId) ?? categories[0],
     [categories, form.categoryId]
   );
+  const filledMembers = useMemo(() => members.filter((member) => member.name.trim() !== ""), [members]);
+  const totalMembers = 1 + filledMembers.length;
+  const canAddMember = totalMembers < rules.maxTeamMembers;
 
   function updateField<K extends keyof RegistrationPayload>(key: K, value: RegistrationPayload[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -81,11 +87,15 @@ export function RegistrationPage() {
       setError("Event, kategori, data tim, ketua, email, dan asal instansi wajib diisi.");
       return;
     }
+    if (totalMembers < rules.minTeamMembers || totalMembers > rules.maxTeamMembers) {
+      setError(`Jumlah peserta harus ${rules.minTeamMembers}-${rules.maxTeamMembers} orang termasuk ketua.`);
+      return;
+    }
     setLoading(true);
     try {
       const team = await api.register({
         ...form,
-        members: members.filter((member) => member.name.trim() !== "")
+        members: filledMembers
       });
       localStorage.setItem("pointproject.teamId", team.id);
       setCreatedTeam(team);
@@ -230,15 +240,26 @@ export function RegistrationPage() {
 
             {step === 1 ? (
               <div className="space-y-5">
+                <div className="rounded-lg border border-lagoon/20 bg-lagoon/5 p-4">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <p className="text-sm font-black">Anggota 1 - Ketua</p>
+                    <StatusPill tone="teal">Wajib</StatusPill>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <ReadOnlyField label="Nama Ketua" value={form.leaderName || "-"} />
+                    <ReadOnlyField label="Email Ketua" value={form.leaderEmail || "-"} />
+                    <ReadOnlyField label="Peran" value="Ketua" />
+                  </div>
+                </div>
                 {members.map((member, index) => (
                   <div key={index} className="rounded-lg border border-ink/10 bg-cloud p-4">
                     <div className="mb-4 flex items-center justify-between gap-3">
-                      <p className="text-sm font-black">Anggota {index + 1}</p>
+                      <p className="text-sm font-black">Anggota {index + 2}</p>
                       <button
                         type="button"
                         className="btn-secondary px-3 py-2"
                         onClick={() => removeMember(index)}
-                        aria-label={`Hapus anggota ${index + 1}`}
+                        aria-label={`Hapus anggota ${index + 2}`}
                       >
                         <Trash2 size={16} />
                         Hapus
@@ -247,7 +268,7 @@ export function RegistrationPage() {
                     <div className="grid gap-4 md:grid-cols-3">
                     <div>
                       <label className="label" htmlFor={`member-name-${index}`}>
-                        Nama Anggota {index + 1}
+                        Nama Anggota {index + 2}
                       </label>
                       <input
                         id={`member-name-${index}`}
@@ -285,10 +306,15 @@ export function RegistrationPage() {
                     </div>
                   </div>
                 ))}
-                <button type="button" className="btn-secondary" onClick={() => setMembers((current) => [...current, emptyMember()])}>
-                  <UserPlus size={18} />
-                  Tambah Anggota
-                </button>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-bold text-ink/60">
+                    Terisi {totalMembers} dari maksimal {rules.maxTeamMembers} peserta. Minimal {rules.minTeamMembers} peserta termasuk ketua.
+                  </p>
+                  <button type="button" className="btn-secondary" disabled={!canAddMember} onClick={() => setMembers((current) => [...current, emptyMember()])}>
+                    <UserPlus size={18} />
+                    Tambah Anggota
+                  </button>
+                </div>
               </div>
             ) : null}
 
@@ -390,5 +416,14 @@ export function RegistrationPage() {
         </div>
       </div>
     </section>
+  );
+}
+
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="label">{label}</p>
+      <p className="rounded-md border border-ink/10 bg-white px-3 py-2.5 text-sm font-bold text-ink/70">{value}</p>
+    </div>
   );
 }

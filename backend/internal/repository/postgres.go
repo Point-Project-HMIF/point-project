@@ -239,6 +239,159 @@ func (s *PostgresStore) ListCommittee(ctx context.Context, eventID string) ([]mo
 	return members, rows.Err()
 }
 
+func (s *PostgresStore) GetEventRules(ctx context.Context, eventID string) (models.EventRules, error) {
+	var rules models.EventRules
+	err := s.db.QueryRow(ctx, `
+		select event_id::text, min_team_members, max_team_members
+		from event_rules
+		where event_id = $1
+	`, eventID).Scan(&rules.EventID, &rules.MinTeamMembers, &rules.MaxTeamMembers)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return s.UpdateEventRules(ctx, eventID, models.EventRulesRequest{MinTeamMembers: 2, MaxTeamMembers: 3})
+	}
+	if err != nil {
+		return models.EventRules{}, err
+	}
+	return rules, nil
+}
+
+func (s *PostgresStore) UpdateEventRules(ctx context.Context, eventID string, input models.EventRulesRequest) (models.EventRules, error) {
+	if input.MinTeamMembers == 0 {
+		input.MinTeamMembers = 2
+	}
+	if input.MaxTeamMembers == 0 {
+		input.MaxTeamMembers = 3
+	}
+	if input.MinTeamMembers < 1 {
+		return models.EventRules{}, errors.New("minimal anggota tim paling sedikit 1")
+	}
+	if input.MaxTeamMembers < input.MinTeamMembers {
+		return models.EventRules{}, errors.New("maksimal anggota tim tidak boleh lebih kecil dari minimal")
+	}
+
+	var rules models.EventRules
+	if err := s.db.QueryRow(ctx, `
+		insert into event_rules (event_id, min_team_members, max_team_members)
+		values ($1, $2, $3)
+		on conflict (event_id) do update
+		set min_team_members = excluded.min_team_members,
+		    max_team_members = excluded.max_team_members,
+		    updated_at = now()
+		returning event_id::text, min_team_members, max_team_members
+	`, eventID, input.MinTeamMembers, input.MaxTeamMembers).Scan(
+		&rules.EventID,
+		&rules.MinTeamMembers,
+		&rules.MaxTeamMembers,
+	); err != nil {
+		return models.EventRules{}, err
+	}
+	return rules, nil
+}
+
+func (s *PostgresStore) ListSubmissionStages(ctx context.Context, eventID string) ([]models.SubmissionStage, error) {
+	rows, err := s.db.Query(ctx, `
+		select id::text, event_id::text, key, label, sort_order, is_open, requires_approval
+		from submission_stages
+		where event_id = $1
+		order by sort_order, created_at
+	`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stages := make([]models.SubmissionStage, 0)
+	for rows.Next() {
+		stage, err := scanSubmissionStage(rows)
+		if err != nil {
+			return nil, err
+		}
+		stages = append(stages, stage)
+	}
+	return stages, rows.Err()
+}
+
+func (s *PostgresStore) ReplaceSubmissionStages(ctx context.Context, eventID string, items []models.SubmissionStageInput) ([]models.SubmissionStage, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `delete from submission_stages where event_id = $1`, eventID); err != nil {
+		return nil, err
+	}
+
+	for index, item := range items {
+		key := submissionStageKey(item.Key, item.Label)
+		if key == "" {
+			return nil, errors.New("nama tahap upload wajib diisi")
+		}
+		label := strings.TrimSpace(item.Label)
+		if label == "" {
+			label = key
+		}
+		sortOrder := item.SortOrder
+		if sortOrder == 0 {
+			sortOrder = index + 1
+		}
+		if _, err := tx.Exec(ctx, `
+			insert into submission_stages (event_id, key, label, sort_order, is_open, requires_approval)
+			values ($1, $2, $3, $4, $5, $6)
+		`, eventID, key, label, sortOrder, item.IsOpen, item.RequiresApproval); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return s.ListSubmissionStages(ctx, eventID)
+}
+
+func (s *PostgresStore) SetTeamStageAccess(ctx context.Context, teamID string, input models.TeamStageAccessRequest) (models.TeamDetail, error) {
+	team, err := s.getTeam(ctx, teamID)
+	if err != nil {
+		return models.TeamDetail{}, err
+	}
+	if strings.TrimSpace(input.StageID) == "" {
+		return models.TeamDetail{}, errors.New("tahap upload wajib dipilih")
+	}
+
+	result, err := s.db.Exec(ctx, `
+		insert into team_stage_access (team_id, stage_id, is_allowed)
+		select $1, id, $3
+		from submission_stages
+		where id = $2 and event_id = $4
+		on conflict (team_id, stage_id) do update
+		set is_allowed = excluded.is_allowed,
+		    updated_at = now()
+	`, teamID, input.StageID, input.IsAllowed, team.EventID)
+	if err != nil {
+		return models.TeamDetail{}, err
+	}
+	if result.RowsAffected() == 0 {
+		return models.TeamDetail{}, errors.New("tahap upload tidak ditemukan untuk event tim")
+	}
+	return s.GetTeamDetail(ctx, teamID)
+}
+
+func scanSubmissionStage(row interface{ Scan(dest ...any) error }) (models.SubmissionStage, error) {
+	var stage models.SubmissionStage
+	if err := row.Scan(
+		&stage.ID,
+		&stage.EventID,
+		&stage.Key,
+		&stage.Label,
+		&stage.SortOrder,
+		&stage.IsOpen,
+		&stage.RequiresApproval,
+	); err != nil {
+		return models.SubmissionStage{}, err
+	}
+	return stage, nil
+}
+
 func (s *PostgresStore) ListFAQs(ctx context.Context, eventID string, includeHidden bool) ([]models.FAQ, error) {
 	query := `
 		select id::text, event_id::text, question, answer, sort_order, is_published
@@ -415,6 +568,20 @@ func (s *PostgresStore) CreateTeam(ctx context.Context, input models.Registratio
 		return models.Team{}, err
 	}
 
+	rules, err := s.GetEventRules(ctx, eventID)
+	if err != nil {
+		return models.Team{}, err
+	}
+	input.Members = normalizeTeamMembers(input)
+	memberCount := len(input.Members)
+	if memberCount < rules.MinTeamMembers || memberCount > rules.MaxTeamMembers {
+		return models.Team{}, fmt.Errorf(
+			"jumlah anggota tim harus %d-%d orang termasuk ketua",
+			rules.MinTeamMembers,
+			rules.MaxTeamMembers,
+		)
+	}
+
 	members, err := json.Marshal(input.Members)
 	if err != nil {
 		return models.Team{}, err
@@ -471,10 +638,14 @@ func (s *PostgresStore) CreateTeam(ctx context.Context, input models.Registratio
 	team.CreatedAt = created.Format(time.RFC3339)
 
 	if input.ProposalURL != "" || input.PrototypeURL != "" {
+		stageKey, err := s.firstSubmissionStageKey(ctx, eventID)
+		if err != nil {
+			return models.Team{}, err
+		}
 		if _, err := tx.Exec(ctx, `
 			insert into submissions (team_id, stage, proposal_url, prototype_url, status)
-			values ($1, 'awal', $2, $3, 'submitted')
-		`, team.ID, strings.TrimSpace(input.ProposalURL), strings.TrimSpace(input.PrototypeURL)); err != nil {
+			values ($1, $2, $3, $4, 'submitted')
+		`, team.ID, stageKey, strings.TrimSpace(input.ProposalURL), strings.TrimSpace(input.PrototypeURL)); err != nil {
 			return models.Team{}, err
 		}
 	}
@@ -506,13 +677,23 @@ func (s *PostgresStore) GetDashboard(ctx context.Context, teamID string) (models
 	if err != nil {
 		return models.Dashboard{}, err
 	}
+	rules, err := s.GetEventRules(ctx, team.EventID)
+	if err != nil {
+		return models.Dashboard{}, err
+	}
+	stages, err := s.teamSubmissionStages(ctx, team)
+	if err != nil {
+		return models.Dashboard{}, err
+	}
 
 	return models.Dashboard{
-		Event:         event,
-		Category:      category,
-		Team:          team,
-		Submissions:   submissions,
-		Announcements: announcements,
+		Event:            event,
+		Category:         category,
+		Team:             team,
+		Submissions:      submissions,
+		Announcements:    announcements,
+		Rules:            rules,
+		SubmissionStages: stages,
 	}, nil
 }
 
@@ -533,11 +714,16 @@ func (s *PostgresStore) GetTeamDetail(ctx context.Context, teamID string) (model
 	if err != nil {
 		return models.TeamDetail{}, err
 	}
+	stages, err := s.teamSubmissionStages(ctx, team)
+	if err != nil {
+		return models.TeamDetail{}, err
+	}
 	return models.TeamDetail{
-		Event:       event,
-		Category:    category,
-		Team:        team,
-		Submissions: submissions,
+		Event:            event,
+		Category:         category,
+		Team:             team,
+		Submissions:      submissions,
+		SubmissionStages: stages,
 	}, nil
 }
 
@@ -585,8 +771,169 @@ func scanTeam(row interface{ Scan(dest ...any) error }) (models.Team, error) {
 	if team.Members == nil {
 		team.Members = []models.TeamMember{}
 	}
+	team.Members = ensureLeaderMember(team)
 	team.CreatedAt = created.Format(time.RFC3339)
 	return team, nil
+}
+
+func normalizeTeamMembers(input models.RegistrationRequest) []models.TeamMember {
+	team := models.Team{
+		LeaderName:  strings.TrimSpace(input.LeaderName),
+		LeaderEmail: strings.TrimSpace(input.LeaderEmail),
+		Members:     cleanTeamMembers(input.Members),
+	}
+	return ensureLeaderMember(team)
+}
+
+func cleanTeamMembers(members []models.TeamMember) []models.TeamMember {
+	cleaned := make([]models.TeamMember, 0, len(members))
+	for _, member := range members {
+		member.Name = strings.TrimSpace(member.Name)
+		member.Email = strings.TrimSpace(member.Email)
+		member.Role = strings.TrimSpace(member.Role)
+		if member.Name == "" {
+			continue
+		}
+		cleaned = append(cleaned, member)
+	}
+	return cleaned
+}
+
+func ensureLeaderMember(team models.Team) []models.TeamMember {
+	leader := models.TeamMember{
+		Name:  strings.TrimSpace(team.LeaderName),
+		Email: strings.TrimSpace(team.LeaderEmail),
+		Role:  "Ketua",
+	}
+	members := make([]models.TeamMember, 0, len(team.Members)+1)
+	if leader.Name != "" {
+		members = append(members, leader)
+	}
+	for _, member := range cleanTeamMembers(team.Members) {
+		if sameTeamMember(leader, member) {
+			continue
+		}
+		members = append(members, member)
+	}
+	return members
+}
+
+func sameTeamMember(a, b models.TeamMember) bool {
+	if a.Email != "" && b.Email != "" {
+		return strings.EqualFold(a.Email, b.Email)
+	}
+	return strings.EqualFold(strings.TrimSpace(a.Name), strings.TrimSpace(b.Name))
+}
+
+func (s *PostgresStore) teamSubmissionStages(ctx context.Context, team models.Team) ([]models.TeamSubmissionStage, error) {
+	stages, err := s.ListSubmissionStages(ctx, team.EventID)
+	if err != nil {
+		return nil, err
+	}
+	accessRows, err := s.db.Query(ctx, `
+		select stage_id::text, is_allowed
+		from team_stage_access
+		where team_id = $1
+	`, team.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer accessRows.Close()
+
+	access := map[string]bool{}
+	for accessRows.Next() {
+		var stageID string
+		var allowed bool
+		if err := accessRows.Scan(&stageID, &allowed); err != nil {
+			return nil, err
+		}
+		access[stageID] = allowed
+	}
+	if err := accessRows.Err(); err != nil {
+		return nil, err
+	}
+
+	items := make([]models.TeamSubmissionStage, 0, len(stages))
+	for _, stage := range stages {
+		items = append(items, buildSubmissionPermission(team, stage, access[stage.ID]))
+	}
+	return items, nil
+}
+
+func (s *PostgresStore) submissionPermission(ctx context.Context, team models.Team, stageKey string) (models.TeamSubmissionStage, error) {
+	stages, err := s.teamSubmissionStages(ctx, team)
+	if err != nil {
+		return models.TeamSubmissionStage{}, err
+	}
+	for _, item := range stages {
+		if item.Stage.Key == stageKey || item.Stage.ID == stageKey {
+			return item, nil
+		}
+	}
+	return models.TeamSubmissionStage{}, errors.New("tahap upload tidak ditemukan")
+}
+
+func buildSubmissionPermission(team models.Team, stage models.SubmissionStage, allowed bool) models.TeamSubmissionStage {
+	item := models.TeamSubmissionStage{
+		Stage:     stage,
+		IsAllowed: allowed,
+		CanSubmit: true,
+	}
+	if team.VerificationStatus != "verified" {
+		item.CanSubmit = false
+		item.Reason = "tim harus diverifikasi panitia sebelum mengirim submission"
+		return item
+	}
+	if !stage.IsOpen {
+		item.CanSubmit = false
+		item.Reason = "tahap upload belum dibuka oleh admin"
+		return item
+	}
+	if stage.RequiresApproval && !allowed {
+		item.CanSubmit = false
+		item.Reason = "tim belum lolos atau belum diberi akses untuk tahap ini"
+		return item
+	}
+	return item
+}
+
+func (s *PostgresStore) firstSubmissionStageKey(ctx context.Context, eventID string) (string, error) {
+	stages, err := s.ListSubmissionStages(ctx, eventID)
+	if err != nil {
+		return "", err
+	}
+	if len(stages) == 0 {
+		return "awal", nil
+	}
+	return stages[0].Key, nil
+}
+
+func (s *PostgresStore) firstSubmissionStageKeyForTeam(ctx context.Context, teamID string) (string, error) {
+	team, err := s.getTeam(ctx, teamID)
+	if err != nil {
+		return "", err
+	}
+	return s.firstSubmissionStageKey(ctx, team.EventID)
+}
+
+func submissionStageKey(key, label string) string {
+	value := strings.TrimSpace(key)
+	if value == "" {
+		value = strings.TrimSpace(label)
+	}
+	var builder strings.Builder
+	lastDash := false
+	for _, r := range strings.ToLower(value) {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			builder.WriteRune(r)
+			lastDash = false
+		case !lastDash && builder.Len() > 0:
+			builder.WriteRune('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(builder.String(), "-")
 }
 
 func (s *PostgresStore) listSubmissions(ctx context.Context, teamID string) ([]models.Submission, error) {
@@ -634,8 +981,24 @@ func (s *PostgresStore) listSubmissions(ctx context.Context, teamID string) ([]m
 
 func (s *PostgresStore) CreateSubmission(ctx context.Context, teamID string, input models.SubmissionRequest) (models.Submission, error) {
 	if input.Stage == "" {
-		input.Stage = "awal"
+		stageKey, err := s.firstSubmissionStageKeyForTeam(ctx, teamID)
+		if err != nil {
+			return models.Submission{}, err
+		}
+		input.Stage = stageKey
 	}
+	team, err := s.getTeam(ctx, teamID)
+	if err != nil {
+		return models.Submission{}, err
+	}
+	permission, err := s.submissionPermission(ctx, team, input.Stage)
+	if err != nil {
+		return models.Submission{}, err
+	}
+	if !permission.CanSubmit {
+		return models.Submission{}, errors.New(permission.Reason)
+	}
+	input.Stage = permission.Stage.Key
 	var submission models.Submission
 	var submitted time.Time
 	if err := s.db.QueryRow(ctx, `
