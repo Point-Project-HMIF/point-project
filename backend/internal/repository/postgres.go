@@ -853,9 +853,14 @@ func (s *PostgresStore) teamSubmissionStages(ctx context.Context, team models.Te
 		return nil, err
 	}
 
+	submittedStages, err := s.submittedStageKeys(ctx, team.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	items := make([]models.TeamSubmissionStage, 0, len(stages))
 	for _, stage := range stages {
-		items = append(items, buildSubmissionPermission(team, stage, access[stage.ID]))
+		items = append(items, buildSubmissionPermission(team, stage, access[stage.ID], submittedStages))
 	}
 	return items, nil
 }
@@ -873,7 +878,7 @@ func (s *PostgresStore) submissionPermission(ctx context.Context, team models.Te
 	return models.TeamSubmissionStage{}, errors.New("tahap upload tidak ditemukan")
 }
 
-func buildSubmissionPermission(team models.Team, stage models.SubmissionStage, allowed bool) models.TeamSubmissionStage {
+func buildSubmissionPermission(team models.Team, stage models.SubmissionStage, allowed bool, submittedStages map[string]bool) models.TeamSubmissionStage {
 	item := models.TeamSubmissionStage{
 		Stage:     stage,
 		IsAllowed: allowed,
@@ -894,7 +899,48 @@ func buildSubmissionPermission(team models.Team, stage models.SubmissionStage, a
 		item.Reason = "tim belum lolos atau belum diberi akses untuk tahap ini"
 		return item
 	}
+	if isFinalSubmissionStage(stage) && hasSubmittedStage(stage, submittedStages) {
+		item.CanSubmit = false
+		item.Reason = "submission tahap final sudah dikirim dan otomatis ditutup untuk tim ini"
+		return item
+	}
 	return item
+}
+
+func (s *PostgresStore) submittedStageKeys(ctx context.Context, teamID string) (map[string]bool, error) {
+	rows, err := s.db.Query(ctx, `
+		select distinct stage
+		from submissions
+		where team_id = $1
+	`, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stages := map[string]bool{}
+	for rows.Next() {
+		var stage string
+		if err := rows.Scan(&stage); err != nil {
+			return nil, err
+		}
+		stage = strings.ToLower(strings.TrimSpace(stage))
+		if stage != "" {
+			stages[stage] = true
+		}
+	}
+	return stages, rows.Err()
+}
+
+func isFinalSubmissionStage(stage models.SubmissionStage) bool {
+	key := strings.ToLower(strings.TrimSpace(stage.Key))
+	label := strings.ToLower(strings.TrimSpace(stage.Label))
+	return key == "final" || strings.Contains(key, "final") || strings.Contains(label, "final")
+}
+
+func hasSubmittedStage(stage models.SubmissionStage, submittedStages map[string]bool) bool {
+	return submittedStages[strings.ToLower(strings.TrimSpace(stage.Key))] ||
+		submittedStages[strings.ToLower(strings.TrimSpace(stage.ID))]
 }
 
 func (s *PostgresStore) firstSubmissionStageKey(ctx context.Context, eventID string) (string, error) {

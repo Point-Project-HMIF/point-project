@@ -14,13 +14,12 @@ import {
 } from "lucide-react";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api, isNotFoundError } from "../lib/api";
-import type { Announcement, Category, CommitteeMember, Event, EventRules, FAQ, TimelineItem } from "../lib/types";
+import type { Announcement, Category, Event, EventRules, FAQ, TimelineItem } from "../lib/types";
 
 export function HomePage() {
   const [event, setEvent] = useState<Event | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
-  const [committee, setCommittee] = useState<CommitteeMember[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [rules, setRules] = useState<EventRules | null>(null);
@@ -31,10 +30,9 @@ export function HomePage() {
     api
       .activeEvent()
       .then(async (active) => {
-        const [nextCategories, nextTimeline, nextCommittee, nextAnnouncements, nextRules, nextFAQs] = await Promise.all([
+        const [nextCategories, nextTimeline, nextAnnouncements, nextRules, nextFAQs] = await Promise.all([
           api.categories(active.id),
           api.timeline(active.id),
-          api.committee(active.id),
           api.announcements(active.id),
           api.rules(active.id).catch((err) => {
             if (isNotFoundError(err)) return { eventId: active.id, minTeamMembers: 2, maxTeamMembers: 3 };
@@ -49,7 +47,6 @@ export function HomePage() {
         setEvent(active);
         setCategories(nextCategories ?? []);
         setTimeline(nextTimeline ?? []);
-        setCommittee(nextCommittee ?? []);
         setAnnouncements(nextAnnouncements ?? []);
         setRules(nextRules);
         setFaqs(nextFAQs ?? []);
@@ -68,6 +65,7 @@ export function HomePage() {
     [announcements]
   );
   const eventName = event?.name ?? "Point Project";
+  const publicFaqs = useMemo(() => faqs.filter((faq) => !isTeamRuleFAQ(faq)), [faqs]);
 
   return (
     <>
@@ -200,29 +198,6 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="py-16">
-        <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-lagoon">Kepanitiaan</p>
-            <h2 className="mt-3 text-3xl font-black">Struktur operasional per periode</h2>
-            <p className="mt-4 text-base leading-7 text-ink/65">
-              Data kepanitiaan disimpan per event, sehingga struktur panitia periode berikutnya dapat
-              ditambah tanpa menghapus rekam jejak sebelumnya.
-            </p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {committee.map((member) => (
-              <article key={member.id} className="card">
-                <StatusPill tone="teal">{member.division}</StatusPill>
-                <h3 className="mt-4 font-black">{member.name}</h3>
-                <p className="mt-2 text-sm leading-6 text-ink/65">{member.position}</p>
-                <p className="mt-4 text-xs font-bold text-ink/45">{member.identity}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
       <section className="bg-ink py-16 text-white">
         <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
           <div>
@@ -251,9 +226,9 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="bg-white py-16">
-        <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.75fr_1.25fr] lg:px-8">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+      <section className="bg-white py-14">
+        <div className="mx-auto grid max-w-7xl items-start gap-8 px-4 sm:px-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:px-8">
+          <div className="grid auto-rows-max gap-3 self-start sm:grid-cols-2 lg:grid-cols-1">
             {[
               {
                 icon: MapPin,
@@ -268,36 +243,44 @@ export function HomePage() {
             ].map((item) => {
               const Icon = item.icon;
               return (
-                <article key={item.title} className="rounded-lg border border-ink/10 bg-cloud p-6">
-                  <Icon className="text-lagoon" size={24} />
-                  <h3 className="mt-4 font-black">{item.title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-ink/65">{item.text}</p>
+                <article key={item.title} className="rounded-lg border border-ink/10 bg-cloud p-4 sm:p-5">
+                  <Icon className="text-lagoon" size={22} />
+                  <h3 className="mt-3 text-sm font-black">{item.title}</h3>
+                  <p
+                    className={`mt-2 leading-6 text-ink/65 ${
+                      item.title === "Email" ? "break-all text-xs sm:text-sm" : "text-sm"
+                    }`}
+                  >
+                    {item.text}
+                  </p>
                 </article>
               );
             })}
           </div>
           <div>
-            <SectionHeading
-              eyebrow="FAQ"
-              title="Aturan dan Pertanyaan Umum"
-              body="Daftar ini dikelola langsung oleh admin atau panitia untuk event aktif."
-            />
-            <div className="mt-8 grid gap-4">
+            <div className="max-w-3xl">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-lagoon">FAQ</p>
+              <h2 className="mt-3 text-2xl font-black sm:text-3xl">Aturan dan Pertanyaan Umum</h2>
+              <p className="mt-3 text-sm leading-6 text-ink/65">
+                Daftar ini dikelola langsung oleh admin atau panitia untuk event aktif.
+              </p>
+            </div>
+            <div className="mt-6 grid gap-3">
               {rules ? (
-                <article className="rounded-lg border border-lagoon/20 bg-lagoon/5 p-5">
+                <article className="rounded-lg border border-lagoon/20 bg-lagoon/5 p-4">
                   <h3 className="font-black">Jumlah peserta per tim</h3>
                   <p className="mt-2 text-sm leading-6 text-ink/65">
                     Minimal {rules.minTeamMembers} peserta dan maksimal {rules.maxTeamMembers} peserta, termasuk ketua.
                   </p>
                 </article>
               ) : null}
-              {faqs.map((faq) => (
-                <article key={faq.id} className="rounded-lg border border-ink/10 bg-cloud p-5">
+              {publicFaqs.map((faq) => (
+                <article key={faq.id} className="rounded-lg border border-ink/10 bg-cloud p-4">
                   <h3 className="font-black">{faq.question}</h3>
                   <p className="mt-2 text-sm leading-6 text-ink/65">{faq.answer}</p>
                 </article>
               ))}
-              {!faqs.length ? (
+              {!rules && !publicFaqs.length ? (
                 <article className="rounded-lg border border-dashed border-ink/20 p-6 text-center">
                   <h3 className="font-black">FAQ belum tersedia.</h3>
                   <p className="mt-2 text-sm text-ink/60">Panitia akan memperbarui aturan melalui admin panel.</p>
@@ -308,5 +291,14 @@ export function HomePage() {
         </div>
       </section>
     </>
+  );
+}
+
+function isTeamRuleFAQ(faq: FAQ) {
+  const question = faq.question.toLowerCase();
+  return (
+    question.includes("jumlah peserta per tim") ||
+    question.includes("jumlah minimal peserta") ||
+    question.includes("jumlah maksimal peserta")
   );
 }
