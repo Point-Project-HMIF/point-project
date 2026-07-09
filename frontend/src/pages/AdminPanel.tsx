@@ -1,9 +1,8 @@
-import { FormEvent, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { FormEvent, useEffect, useMemo, useState, type Dispatch, type KeyboardEvent, type MouseEvent, type SetStateAction } from "react";
 import {
   CalendarClock,
   CheckCircle2,
   ClipboardList,
-  Eye,
   FileSpreadsheet,
   LayoutGrid,
   LogIn,
@@ -420,7 +419,7 @@ export function AdminPanel() {
             ) : null}
 
             {tab === "peserta" ? (
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+              <div className={clsx("grid gap-5", selectedTeam && "xl:grid-cols-[minmax(0,1fr)_380px]")}>
                 <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
                   <div className="grid gap-3 md:grid-cols-[1fr_220px]">
                     <div className="relative">
@@ -444,9 +443,10 @@ export function AdminPanel() {
                     onVerify={verify}
                     onDetail={openTeamDetail}
                     loading={loading}
+                    selectedTeamId={selectedTeam?.team.id}
                   />
                 </div>
-                <TeamDetailPanel detail={selectedTeam} onClose={() => setSelectedTeam(null)} />
+                {selectedTeam ? <TeamDetailPanel detail={selectedTeam} onClose={() => setSelectedTeam(null)} /> : null}
               </div>
             ) : null}
 
@@ -626,12 +626,19 @@ export function AdminPanel() {
             ) : null}
 
             {tab === "submission" ? (
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+              <div className={clsx("grid gap-5", selectedTeam && "xl:grid-cols-[minmax(0,1fr)_380px]")}>
                 <div className="rounded-lg border border-ink/10 bg-white p-4 shadow-soft sm:p-5">
                   <h2 className="text-xl font-black">Rekap Submission</h2>
-                  <TeamTable teams={teams} onVerify={verify} onDetail={openTeamDetail} loading={loading} compact />
+                  <TeamTable
+                    teams={teams}
+                    onVerify={verify}
+                    onDetail={openTeamDetail}
+                    loading={loading}
+                    selectedTeamId={selectedTeam?.team.id}
+                    compact
+                  />
                 </div>
-                <TeamDetailPanel detail={selectedTeam} onClose={() => setSelectedTeam(null)} />
+                {selectedTeam ? <TeamDetailPanel detail={selectedTeam} onClose={() => setSelectedTeam(null)} /> : null}
               </div>
             ) : null}
 
@@ -763,17 +770,7 @@ function TextField({
   );
 }
 
-function TeamDetailPanel({ detail, onClose }: { detail: TeamDetail | null; onClose: () => void }) {
-  if (!detail) {
-    return (
-      <article className="min-w-0 rounded-lg border border-dashed border-ink/20 bg-white p-6 text-center shadow-soft">
-        <Eye className="mx-auto text-ink/35" size={28} />
-        <p className="mt-3 font-black">Pilih tim untuk melihat detail.</p>
-        <p className="mt-2 text-sm text-ink/60">Detail memuat data anggota, kontak, status, dan submission.</p>
-      </article>
-    );
-  }
-
+function TeamDetailPanel({ detail, onClose }: { detail: TeamDetail; onClose: () => void }) {
   return (
     <article className="min-w-0 rounded-lg border border-ink/10 bg-white p-4 shadow-soft sm:p-5">
       <div className="flex items-start justify-between gap-3">
@@ -851,19 +848,45 @@ function TeamTable({
   onVerify,
   onDetail,
   loading,
+  selectedTeamId,
   compact = false
 }: {
   teams: Team[];
   onVerify: (teamId: string, status: string) => void;
   onDetail: (teamId: string) => void;
   loading: boolean;
+  selectedTeamId?: string;
   compact?: boolean;
 }) {
+  function openFromKeyboard(event: KeyboardEvent<HTMLElement>, teamId: string) {
+    const target = event.target as HTMLElement;
+    if (target.closest("button")) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onDetail(teamId);
+  }
+
+  function verifyFromButton(event: MouseEvent<HTMLButtonElement>, teamId: string, status: string) {
+    event.stopPropagation();
+    onVerify(teamId, status);
+  }
+
   return (
     <>
-      <div className="mt-5 divide-y divide-ink/10 rounded-md border border-ink/10 md:hidden">
+      <div className="mt-5 grid gap-3 md:hidden">
         {teams.map((team) => (
-          <article key={team.id} className="p-4">
+          <article
+            key={team.id}
+            role="button"
+            tabIndex={0}
+            aria-label={`Buka detail tim ${team.name}`}
+            onClick={() => onDetail(team.id)}
+            onKeyDown={(event) => openFromKeyboard(event, team.id)}
+            className={clsx(
+              "cursor-pointer rounded-lg border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-lagoon/35",
+              selectedTeamId === team.id ? "border-lagoon bg-lagoon/5" : "border-ink/10 bg-white hover:border-lagoon/45 hover:bg-cloud"
+            )}
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="break-words font-black">{team.name}</p>
@@ -874,36 +897,40 @@ function TeamTable({
               </StatusPill>
             </div>
 
-            <div className="mt-4 grid gap-2 text-sm text-ink/70">
+            <div className="mt-4 grid gap-2 rounded-md bg-cloud px-3 py-3 text-sm text-ink/70">
               <Info label="Kategori" value={team.categoryName} />
               <Info label="Batch" value={`Batch ${team.batch}`} />
               <Info label="Ketua" value={team.leaderName} />
             </div>
 
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              <button className="btn-secondary w-full px-3 py-2 sm:w-auto" disabled={loading} onClick={() => onDetail(team.id)}>
-                <Eye size={16} />
-                Detail
-              </button>
-              {!compact ? (
-                <>
-                  <button className="btn-secondary w-full px-3 py-2 sm:w-auto" disabled={loading} onClick={() => onVerify(team.id, "verified")}>
-                    <CheckCircle2 size={16} />
-                    Verifikasi
-                  </button>
-                  <button className="btn-secondary w-full px-3 py-2 sm:w-auto" disabled={loading} onClick={() => onVerify(team.id, "rejected")}>
-                    Tolak
-                  </button>
-                </>
-              ) : null}
-            </div>
+            {!compact ? (
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <button
+                  type="button"
+                  className="btn-secondary w-full px-3 py-2 sm:w-auto"
+                  disabled={loading}
+                  onClick={(event) => verifyFromButton(event, team.id, "verified")}
+                >
+                  <CheckCircle2 size={16} />
+                  Verifikasi
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary w-full px-3 py-2 sm:w-auto"
+                  disabled={loading}
+                  onClick={(event) => verifyFromButton(event, team.id, "rejected")}
+                >
+                  Tolak
+                </button>
+              </div>
+            ) : null}
           </article>
         ))}
         {!teams.length ? <p className="p-6 text-center text-sm text-ink/60">Belum ada peserta sesuai filter.</p> : null}
       </div>
 
       <div className="mt-5 hidden overflow-x-auto md:block">
-        <table className="w-full min-w-[760px] text-left text-sm lg:min-w-[900px]">
+        <table className={clsx("w-full text-left text-sm", compact ? "min-w-[680px]" : "min-w-[760px] lg:min-w-[900px]")}>
           <thead className="border-b border-ink/10 text-xs uppercase text-ink/45">
             <tr>
               <th className="py-3 pr-4">Tim</th>
@@ -911,12 +938,23 @@ function TeamTable({
               <th className="py-3 pr-4">Batch</th>
               <th className="py-3 pr-4">Ketua</th>
               <th className="py-3 pr-4">Status</th>
-              <th className="py-3 pr-4">Aksi</th>
+              {!compact ? <th className="py-3 pr-4">Aksi</th> : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-ink/10">
             {teams.map((team) => (
-              <tr key={team.id}>
+              <tr
+                key={team.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`Buka detail tim ${team.name}`}
+                onClick={() => onDetail(team.id)}
+                onKeyDown={(event) => openFromKeyboard(event, team.id)}
+                className={clsx(
+                  "cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-lagoon/35",
+                  selectedTeamId === team.id ? "bg-lagoon/5" : "hover:bg-cloud"
+                )}
+              >
                 <td className="py-3 pr-4">
                   <p className="font-black">{team.name}</p>
                   <p className="text-xs text-ink/50">{team.institution}</p>
@@ -929,30 +967,34 @@ function TeamTable({
                     {team.verificationStatus}
                   </StatusPill>
                 </td>
-                <td className="py-3 pr-4">
-                  <div className="flex flex-wrap gap-2">
-                    <button className="btn-secondary px-3 py-2" disabled={loading} onClick={() => onDetail(team.id)}>
-                      <Eye size={16} />
-                      Detail
-                    </button>
-                    {!compact ? (
-                      <>
-                        <button className="btn-secondary px-3 py-2" disabled={loading} onClick={() => onVerify(team.id, "verified")}>
-                          <CheckCircle2 size={16} />
-                          Verifikasi
-                        </button>
-                        <button className="btn-secondary px-3 py-2" disabled={loading} onClick={() => onVerify(team.id, "rejected")}>
-                          Tolak
-                        </button>
-                      </>
-                    ) : null}
-                  </div>
-                </td>
+                {!compact ? (
+                  <td className="py-3 pr-4">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="btn-secondary px-3 py-2"
+                        disabled={loading}
+                        onClick={(event) => verifyFromButton(event, team.id, "verified")}
+                      >
+                        <CheckCircle2 size={16} />
+                        Verifikasi
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary px-3 py-2"
+                        disabled={loading}
+                        onClick={(event) => verifyFromButton(event, team.id, "rejected")}
+                      >
+                        Tolak
+                      </button>
+                    </div>
+                  </td>
+                ) : null}
               </tr>
             ))}
             {!teams.length ? (
               <tr>
-                <td className="py-8 text-center text-ink/60" colSpan={6}>
+                <td className="py-8 text-center text-ink/60" colSpan={compact ? 5 : 6}>
                   Belum ada peserta sesuai filter.
                 </td>
               </tr>
