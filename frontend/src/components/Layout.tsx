@@ -1,12 +1,12 @@
 import { Link, NavLink } from "react-router-dom";
-import { CalendarDays, LayoutDashboard, Megaphone, ShieldCheck, Sparkles, UserPlus } from "lucide-react";
+import { CalendarDays, Home, LayoutDashboard, Megaphone, ShieldCheck, UserPlus } from "lucide-react";
 import clsx from "clsx";
 import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import type { Event } from "../lib/types";
 
 const navItems = [
-  { to: "/", label: "Beranda", icon: Sparkles },
+  { to: "/", label: "Beranda", icon: Home },
   { to: "/daftar", label: "Pendaftaran", icon: UserPlus },
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/pengumuman", label: "Pengumuman", icon: Megaphone },

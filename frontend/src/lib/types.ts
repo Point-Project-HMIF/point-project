@@ -160,7 +160,7 @@ export type Submission = {
 export type SubmissionPayload = {
   stage: string;
   proposal?: File | null;
-  prototype?: File | null;
+  prototypeUrl?: string;
   ppt?: File | null;
   report?: File | null;
   poster?: File | null;

@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/mail"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -426,6 +427,15 @@ func (s *Server) createSubmission(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	input.PrototypeURL = strings.TrimSpace(input.PrototypeURL)
+	if input.PrototypeURL != "" && !isFigmaPrototypeURL(input.PrototypeURL) {
+		writeMessage(w, http.StatusBadRequest, "link prototype harus menggunakan URL Figma yang valid")
+		return
+	}
+	if strings.TrimSpace(input.ProposalURL) == "" && input.PrototypeURL == "" && strings.TrimSpace(input.PPTURL) == "" && strings.TrimSpace(input.ReportURL) == "" && strings.TrimSpace(input.PosterURL) == "" {
+		writeMessage(w, http.StatusBadRequest, "isi link Figma prototype atau unggah minimal satu file karya")
+		return
+	}
 	submission, err := s.store.CreateSubmission(r.Context(), chi.URLParam(r, "teamID"), input)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -435,10 +445,6 @@ func (s *Server) createSubmission(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createMultipartSubmission(w http.ResponseWriter, r *http.Request) {
-	if s.files == nil {
-		writeMessage(w, http.StatusServiceUnavailable, "penyimpanan file R2 belum dikonfigurasi")
-		return
-	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxSubmissionUploadBytes)
 	if err := r.ParseMultipartForm(maxSubmissionUploadBytes); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -451,7 +457,12 @@ func (s *Server) createMultipartSubmission(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	input := models.SubmissionRequest{
-		Stage: strings.TrimSpace(r.FormValue("stage")),
+		Stage:        strings.TrimSpace(r.FormValue("stage")),
+		PrototypeURL: strings.TrimSpace(r.FormValue("prototypeUrl")),
+	}
+	if input.PrototypeURL != "" && !isFigmaPrototypeURL(input.PrototypeURL) {
+		writeMessage(w, http.StatusBadRequest, "link prototype harus menggunakan URL Figma yang valid")
+		return
 	}
 	permission, err := resolveSubmissionPermission(detail, input.Stage)
 	if err != nil {
@@ -464,11 +475,10 @@ func (s *Server) createMultipartSubmission(w http.ResponseWriter, r *http.Reques
 	}
 	input.Stage = permission.Stage.Key
 	fileFields := map[string]*string{
-		"proposal":  &input.ProposalURL,
-		"prototype": &input.PrototypeURL,
-		"ppt":       &input.PPTURL,
-		"report":    &input.ReportURL,
-		"poster":    &input.PosterURL,
+		"proposal": &input.ProposalURL,
+		"ppt":      &input.PPTURL,
+		"report":   &input.ReportURL,
+		"poster":   &input.PosterURL,
 	}
 	for field, target := range fileFields {
 		header, err := firstMultipartFile(r, field)
@@ -479,6 +489,10 @@ func (s *Server) createMultipartSubmission(w http.ResponseWriter, r *http.Reques
 		if header == nil {
 			continue
 		}
+		if s.files == nil {
+			writeMessage(w, http.StatusServiceUnavailable, "penyimpanan file R2 belum dikonfigurasi")
+			return
+		}
 		url, err := s.files.UploadSubmissionFile(r.Context(), detail.Team, input.Stage, field, header)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, err)
@@ -487,7 +501,7 @@ func (s *Server) createMultipartSubmission(w http.ResponseWriter, r *http.Reques
 		*target = url
 	}
 	if input.ProposalURL == "" && input.PrototypeURL == "" && input.PPTURL == "" && input.ReportURL == "" && input.PosterURL == "" {
-		writeMessage(w, http.StatusBadRequest, "minimal satu file karya wajib diunggah")
+		writeMessage(w, http.StatusBadRequest, "isi link Figma prototype atau unggah minimal satu file karya")
 		return
 	}
 	submission, err := s.store.CreateSubmission(r.Context(), teamID, input)
@@ -517,6 +531,18 @@ func resolveSubmissionPermission(detail models.TeamDetail, stageKey string) (mod
 		}
 	}
 	return models.TeamSubmissionStage{}, fmt.Errorf("tahap upload tidak ditemukan")
+}
+
+func isFigmaPrototypeURL(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	return host == "figma.com" || strings.HasSuffix(host, ".figma.com")
 }
 
 func firstMultipartFile(r *http.Request, field string) (*multipart.FileHeader, error) {

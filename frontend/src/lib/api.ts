@@ -79,7 +79,10 @@ export const api = {
   submitWork: (teamId: string, payload: SubmissionPayload) => {
     const formData = new FormData();
     formData.set("stage", payload.stage);
-    (["proposal", "prototype", "ppt", "report", "poster"] as const).forEach((key) => {
+    if (payload.prototypeUrl?.trim()) {
+      formData.set("prototypeUrl", payload.prototypeUrl.trim());
+    }
+    (["proposal", "ppt", "report", "poster"] as const).forEach((key) => {
       const file = payload[key];
       if (file) formData.set(key, file);
     });

@@ -5,12 +5,11 @@ import { api } from "../lib/api";
 import type { ParticipantDashboard, Submission, SubmissionPayload } from "../lib/types";
 
 const submissionFileFields: Array<{
-  key: Exclude<keyof SubmissionPayload, "stage">;
+  key: Exclude<keyof SubmissionPayload, "stage" | "prototypeUrl">;
   label: string;
   accept?: string;
 }> = [
   { key: "proposal", label: "File Proposal", accept: ".pdf,.doc,.docx" },
-  { key: "prototype", label: "File Prototype / Web Preview", accept: ".zip,.rar,.7z,.pdf,.html" },
   { key: "ppt", label: "File PPT", accept: ".ppt,.pptx,.pdf" },
   { key: "report", label: "File Laporan", accept: ".pdf,.doc,.docx" },
   { key: "poster", label: "File Poster", accept: ".png,.jpg,.jpeg,.pdf" }
@@ -25,7 +24,7 @@ export function DashboardPage() {
   const [submission, setSubmission] = useState<SubmissionPayload>({
     stage: "awal",
     proposal: null,
-    prototype: null,
+    prototypeUrl: "",
     ppt: null,
     report: null,
     poster: null
@@ -57,7 +56,8 @@ export function DashboardPage() {
         const normalized = normalizeDashboard(nextDashboard);
         setDashboard(normalized);
         const nextStage = normalized.submissionStages.find((item) => item.canSubmit)?.stage.key ?? normalized.submissionStages[0]?.stage.key ?? "awal";
-        setSubmission((current) => ({ ...current, stage: nextStage }));
+        setSubmission({ stage: nextStage, proposal: null, prototypeUrl: "", ppt: null, report: null, poster: null });
+        setUploadResetKey((current) => current + 1);
         localStorage.setItem("pointproject.teamId", nextTeamId);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Dashboard tidak ditemukan."))
@@ -80,8 +80,13 @@ export function DashboardPage() {
       setError(permission?.reason || "Tahap upload ini belum tersedia untuk tim kamu.");
       return;
     }
-    if (!submissionFileFields.some((field) => submission[field.key])) {
-      setError("Pilih minimal satu file karya sebelum mengirim submission.");
+    const prototypeUrl = submission.prototypeUrl?.trim() ?? "";
+    if (prototypeUrl && !isFigmaURL(prototypeUrl)) {
+      setError("Link prototype harus menggunakan URL Figma yang valid.");
+      return;
+    }
+    if (!prototypeUrl && !submissionFileFields.some((field) => submission[field.key])) {
+      setError("Isi link Figma prototype atau pilih minimal satu file karya sebelum mengirim submission.");
       return;
     }
     setLoading(true);
@@ -91,7 +96,7 @@ export function DashboardPage() {
         const normalized = normalizeDashboard(nextDashboard);
         setDashboard(normalized);
         const nextStage = normalized.submissionStages.find((item) => item.canSubmit)?.stage.key ?? submission.stage;
-        setSubmission({ stage: nextStage, proposal: null, prototype: null, ppt: null, report: null, poster: null });
+        setSubmission({ stage: nextStage, proposal: null, prototypeUrl: "", ppt: null, report: null, poster: null });
         setUploadResetKey((current) => current + 1);
       });
     } catch (err) {
@@ -154,7 +159,7 @@ export function DashboardPage() {
                   <span className="font-bold text-ink/55">ID Tim:</span> {dashboard.team.id}
                 </p>
                 <p className="text-sm">
-                  <span className="font-bold text-ink/55">Jumlah Peserta:</span> {dashboard.team.members.length + 1} orang termasuk ketua
+                  <span className="font-bold text-ink/55">Jumlah Peserta:</span> {dashboard.team.members.length} orang termasuk ketua
                 </p>
               </div>
             </article>
@@ -243,6 +248,20 @@ export function DashboardPage() {
                   </select>
                   {!submissionStages.length ? <p className="mt-2 text-xs font-bold text-coral">Belum ada tahap upload dari admin.</p> : null}
                 </div>
+                <div className="md:col-span-2">
+                  <label className="label" htmlFor="prototype-url">
+                    Link Figma Prototype
+                  </label>
+                  <input
+                    id="prototype-url"
+                    className="field"
+                    type="url"
+                    value={submission.prototypeUrl ?? ""}
+                    onChange={(event) => setSubmission((current) => ({ ...current, prototypeUrl: event.target.value }))}
+                    placeholder="https://www.figma.com/proto/..."
+                  />
+                  <p className="mt-2 text-xs font-bold text-ink/45">Prototype cukup berupa link Figma, bukan file upload.</p>
+                </div>
                 {submissionFileFields.map(({ key, label, accept }) => (
                   <div key={key}>
                     <label className="label" htmlFor={key}>
@@ -294,6 +313,16 @@ function normalizeDashboard(dashboard: ParticipantDashboard): ParticipantDashboa
     rules: dashboard.rules ?? { eventId: dashboard.event.id, minTeamMembers: 2, maxTeamMembers: 3 },
     submissionStages: dashboard.submissionStages ?? []
   };
+}
+
+function isFigmaURL(value: string) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    return (url.protocol === "https:" || url.protocol === "http:") && (host === "figma.com" || host.endsWith(".figma.com"));
+  } catch {
+    return false;
+  }
 }
 
 function SubmissionLinks({ submission }: { submission: Submission }) {

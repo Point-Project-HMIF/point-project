@@ -1517,14 +1517,13 @@ function TeamDetailPanel({
       <div className="mt-6">
         <p className="text-sm font-black">Anggota</p>
         <div className="mt-3 grid gap-3">
-          <div className="rounded-md border border-lagoon/20 bg-lagoon/5 p-3 text-sm">
-            <p className="font-black">1. {detail.team.leaderName}</p>
-            <p className="mt-1 text-ink/60">{detail.team.leaderEmail || "-"} - Ketua</p>
-          </div>
           {detail.team.members.map((member, index) => (
-            <div key={`${member.email}-${index}`} className="rounded-md bg-cloud p-3 text-sm">
+            <div
+              key={`${member.email || member.name}-${index}`}
+              className={(member.role || "").toLowerCase() === "ketua" ? "rounded-md border border-lagoon/20 bg-lagoon/5 p-3 text-sm" : "rounded-md bg-cloud p-3 text-sm"}
+            >
               <p className="font-black">
-                {index + 2}. {member.name}
+                {index + 1}. {member.name}
               </p>
               <p className="mt-1 text-ink/60">{member.email || "-"} - {member.role || "-"}</p>
             </div>
