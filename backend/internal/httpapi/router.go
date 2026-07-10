@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"log"
 	"math/big"
 	"mime/multipart"
 	"net/http"
 	"net/mail"
 	"net/url"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -54,6 +56,7 @@ type r2SubmissionFileStorage struct {
 	client        *s3.Client
 	bucket        string
 	publicBaseURL string
+	objectPrefix  string
 }
 
 type contextKey string
@@ -73,7 +76,7 @@ func newRegistrationMailer(apiKey, from string) registrationMailer {
 	}
 }
 
-func newSubmissionFileStorage(endpoint, bucket, accessKeyID, secretAccessKey, publicBaseURL string) submissionFileStorage {
+func newSubmissionFileStorage(endpoint, bucket, accessKeyID, secretAccessKey, publicBaseURL, objectPrefix string) submissionFileStorage {
 	endpoint = strings.TrimSpace(endpoint)
 	bucket = strings.TrimSpace(bucket)
 	accessKeyID = strings.TrimSpace(accessKeyID)
@@ -93,6 +96,7 @@ func newSubmissionFileStorage(endpoint, bucket, accessKeyID, secretAccessKey, pu
 		client:        client,
 		bucket:        bucket,
 		publicBaseURL: strings.TrimRight(strings.TrimSpace(publicBaseURL), "/"),
+		objectPrefix:  normalizeObjectPrefix(objectPrefix),
 	}
 }
 
@@ -119,6 +123,9 @@ func (s *r2SubmissionFileStorage) UploadSubmissionFile(ctx context.Context, team
 		base = field
 	}
 	key := fmt.Sprintf("submissions/%s/%s/%s-%d-%s%s", teamFolder, slugifyPathPart(stage), slugifyPathPart(field), time.Now().UnixNano(), base, ext)
+	if s.objectPrefix != "" {
+		key = s.objectPrefix + "/" + key
+	}
 	contentType := header.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/octet-stream"
@@ -148,6 +155,17 @@ func cleanFileExt(filename string) string {
 		}
 	}
 	return ext
+}
+
+func normalizeObjectPrefix(value string) string {
+	parts := strings.Split(strings.Trim(value, "/ "), "/")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if slug := slugifyPathPart(part); slug != "" {
+			out = append(out, slug)
+		}
+	}
+	return strings.Join(out, "/")
 }
 
 func slugifyPathPart(value string) string {
@@ -209,7 +227,8 @@ func NewRouter(
 	r2Bucket,
 	r2AccessKeyID,
 	r2SecretAccessKey,
-	r2PublicBaseURL string,
+	r2PublicBaseURL,
+	r2ObjectPrefix string,
 ) http.Handler {
 	if len(allowedOrigins) == 0 {
 		allowedOrigins = []string{"http://localhost:5173"}
@@ -219,10 +238,11 @@ func NewRouter(
 		store:     store,
 		jwtSecret: []byte(jwtSecret),
 		mailer:    newRegistrationMailer(resendAPIKey, resendFrom),
-		files:     newSubmissionFileStorage(r2Endpoint, r2Bucket, r2AccessKeyID, r2SecretAccessKey, r2PublicBaseURL),
+		files:     newSubmissionFileStorage(r2Endpoint, r2Bucket, r2AccessKeyID, r2SecretAccessKey, r2PublicBaseURL, r2ObjectPrefix),
 	}
 
 	r := chi.NewRouter()
+	r.Use(server.recoverPanic)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -276,6 +296,18 @@ func NewRouter(
 	})
 
 	return r
+}
+
+func (s *Server) recoverPanic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				log.Printf("panic while handling %s %s: %v\n%s", r.Method, r.URL.Path, recovered, debug.Stack())
+				writeMessage(w, http.StatusInternalServerError, "server error saat memproses request")
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {

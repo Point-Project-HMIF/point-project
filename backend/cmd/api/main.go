@@ -40,6 +40,7 @@ func main() {
 		cfg.R2AccessKeyID,
 		cfg.R2SecretAccessKey,
 		cfg.R2PublicBaseURL,
+		cfg.R2ObjectPrefix,
 	)
 
 	log.Printf("Point Project API berjalan di %s", cfg.HTTPAddr)
