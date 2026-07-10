@@ -190,6 +190,8 @@ type AnnouncementResult struct {
 	Institution  string `json:"institution"`
 	WorkTitle    string `json:"workTitle"`
 	PrototypeURL string `json:"prototypeUrl"`
+	Reason       string `json:"reason"`
+	PreviewURL   string `json:"previewUrl"`
 }
 
 type Announcement struct {

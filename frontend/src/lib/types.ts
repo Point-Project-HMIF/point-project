@@ -131,8 +131,6 @@ export type RegistrationPayload = {
   leaderPhone: string;
   institution: string;
   members: TeamMember[];
-  proposalUrl: string;
-  prototypeUrl: string;
   otpCode: string;
 };
 
@@ -161,11 +159,11 @@ export type Submission = {
 
 export type SubmissionPayload = {
   stage: string;
-  proposalUrl?: string;
-  prototypeUrl?: string;
-  pptUrl?: string;
-  reportUrl?: string;
-  posterUrl?: string;
+  proposal?: File | null;
+  prototype?: File | null;
+  ppt?: File | null;
+  report?: File | null;
+  poster?: File | null;
 };
 
 export type AnnouncementResult = {
@@ -175,6 +173,8 @@ export type AnnouncementResult = {
   institution: string;
   workTitle: string;
   prototypeUrl: string;
+  reason?: string;
+  previewUrl?: string;
 };
 
 export type Announcement = {

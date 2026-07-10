@@ -13,6 +13,11 @@ type Config struct {
 	CORSAllowedOrigins []string
 	ResendAPIKey       string
 	ResendFromEmail    string
+	R2Endpoint         string
+	R2Bucket           string
+	R2AccessKeyID      string
+	R2SecretAccessKey  string
+	R2PublicBaseURL    string
 }
 
 func Load() Config {
@@ -25,6 +30,11 @@ func Load() Config {
 		CORSAllowedOrigins: splitCSV(env("CORS_ALLOWED_ORIGINS", "http://localhost:5173")),
 		ResendAPIKey:       os.Getenv("RESEND_API_KEY"),
 		ResendFromEmail:    env("RESEND_FROM_EMAIL", "Point Project <noreply@contact.pointproject.web.id>"),
+		R2Endpoint:         os.Getenv("R2_ENDPOINT"),
+		R2Bucket:           os.Getenv("R2_BUCKET"),
+		R2AccessKeyID:      os.Getenv("R2_ACCESS_KEY_ID"),
+		R2SecretAccessKey:  os.Getenv("R2_SECRET_ACCESS_KEY"),
+		R2PublicBaseURL:    os.Getenv("R2_PUBLIC_BASE_URL"),
 	}
 }
 

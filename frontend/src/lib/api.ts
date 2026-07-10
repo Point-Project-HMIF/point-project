@@ -34,7 +34,9 @@ type APIEnvelope<T> = {
 
 async function request<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json");
+  if (!(init.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
@@ -74,8 +76,15 @@ export const api = {
   register: (payload: RegistrationPayload) =>
     request<Team>("/registrations", { method: "POST", body: JSON.stringify(payload) }),
   participantDashboard: (teamId: string) => request<ParticipantDashboard>(`/participants/${teamId}/dashboard`),
-  submitWork: (teamId: string, payload: SubmissionPayload) =>
-    request<Submission>(`/participants/${teamId}/submissions`, { method: "POST", body: JSON.stringify(payload) }),
+  submitWork: (teamId: string, payload: SubmissionPayload) => {
+    const formData = new FormData();
+    formData.set("stage", payload.stage);
+    (["proposal", "prototype", "ppt", "report", "poster"] as const).forEach((key) => {
+      const file = payload[key];
+      if (file) formData.set(key, file);
+    });
+    return request<Submission>(`/participants/${teamId}/submissions`, { method: "POST", body: formData });
+  },
   adminLogin: (email: string, password: string) =>
     request<LoginResponse>("/admin/login", {
       method: "POST",

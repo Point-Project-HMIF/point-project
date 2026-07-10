@@ -29,7 +29,18 @@ func main() {
 
 	var store repository.Store = repository.NewPostgresStore(pool)
 
-	handler := httpapi.NewRouter(store, cfg.JWTSecret, cfg.CORSAllowedOrigins, cfg.ResendAPIKey, cfg.ResendFromEmail)
+	handler := httpapi.NewRouter(
+		store,
+		cfg.JWTSecret,
+		cfg.CORSAllowedOrigins,
+		cfg.ResendAPIKey,
+		cfg.ResendFromEmail,
+		cfg.R2Endpoint,
+		cfg.R2Bucket,
+		cfg.R2AccessKeyID,
+		cfg.R2SecretAccessKey,
+		cfg.R2PublicBaseURL,
+	)
 
 	log.Printf("Point Project API berjalan di %s", cfg.HTTPAddr)
 	if err := http.ListenAndServe(cfg.HTTPAddr, handler); err != nil {

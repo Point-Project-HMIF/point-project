@@ -5,7 +5,7 @@ import { SectionHeading, StatusPill } from "../components/Layout";
 import { api } from "../lib/api";
 import type { Category, Event, EventRules, RegistrationPayload, Team, TeamMember } from "../lib/types";
 
-const steps = ["Data Tim", "Anggota", "Kategori", "Upload"];
+const steps = ["Data Tim", "Anggota", "Kategori", "Verifikasi"];
 
 const emptyMember = (): TeamMember => ({ name: "", email: "", role: "" });
 const maxAdditionalMembers = (rules: EventRules) => Math.max(rules.maxTeamMembers - 1, 0);
@@ -28,8 +28,6 @@ export function RegistrationPage() {
     leaderPhone: "",
     institution: "",
     members: [],
-    proposalUrl: "",
-    prototypeUrl: "",
     otpCode: ""
   });
   const [loading, setLoading] = useState(false);
@@ -106,6 +104,23 @@ export function RegistrationPage() {
         return;
       }
     }
+    if (step === 1) {
+      if (totalMembers < rules.minTeamMembers) {
+        setError(`Minimal ${rules.minTeamMembers} peserta termasuk ketua wajib diisi.`);
+        return;
+      }
+      const invalidMember = members.some((member) => member.name.trim() || member.email.trim() || member.role.trim()
+        ? !member.name.trim() || !member.email.trim() || !member.role.trim()
+        : false);
+      if (invalidMember) {
+        setError("Setiap slot anggota yang diisi wajib lengkap: nama, email, dan peran.");
+        return;
+      }
+    }
+    if (step === 2 && (!form.categoryId || !form.batch)) {
+      setError("Batch dan kategori lomba wajib dipilih.");
+      return;
+    }
     setStep((current) => current + 1);
   }
 
@@ -142,7 +157,7 @@ export function RegistrationPage() {
       setError("Nomor WhatsApp tidak valid. Gunakan format 08xxxxxxxxxx atau +628xxxxxxxxxx.");
       return;
     }
-    if (!form.otpCode.trim()) {
+    if (!/^\d{6}$/.test(form.otpCode.trim())) {
       setError("Masukkan kode OTP yang dikirim ke email ketua.");
       return;
     }
@@ -433,30 +448,6 @@ export function RegistrationPage() {
 
             {step === 3 ? (
               <div className="grid gap-5">
-                <div>
-                  <label className="label" htmlFor="proposal">
-                    Link Proposal
-                  </label>
-                  <input
-                    id="proposal"
-                    className="field"
-                    value={form.proposalUrl}
-                    onChange={(event) => updateField("proposalUrl", event.target.value)}
-                    placeholder="https://drive.google.com/..."
-                  />
-                </div>
-                <div>
-                  <label className="label" htmlFor="prototype">
-                    Link Prototype
-                  </label>
-                  <input
-                    id="prototype"
-                    className="field"
-                    value={form.prototypeUrl}
-                    onChange={(event) => updateField("prototypeUrl", event.target.value)}
-                    placeholder="https://figma.com/..."
-                  />
-                </div>
                 <div className="rounded-lg border border-lagoon/20 bg-lagoon/5 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>

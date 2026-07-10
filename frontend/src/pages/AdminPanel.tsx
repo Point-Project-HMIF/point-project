@@ -145,13 +145,16 @@ export function AdminPanel() {
   const [faqForm, setFaqForm] = useState<FAQPayload>(() => emptyFAQForm());
   const [announcementForm, setAnnouncementForm] = useState({
     type: "finalis",
+    rank: "1",
     title: "",
     body: "",
     teamName: "",
     categoryName: "",
     institution: "",
     workTitle: "",
-    prototypeUrl: ""
+    prototypeUrl: "",
+    previewUrl: "",
+    reason: ""
   });
 
   const generatedEmail = useMemo(() => {
@@ -524,12 +527,14 @@ export function AdminPanel() {
     setLoading(true);
     setError("");
     const result: AnnouncementResult = {
-      rank: announcementForm.type === "pemenang" ? 1 : 0,
+      rank: announcementForm.type === "pemenang" ? Number(announcementForm.rank) || 1 : 0,
       teamName: announcementForm.teamName,
       categoryName: announcementForm.categoryName,
       institution: announcementForm.institution,
       workTitle: announcementForm.workTitle,
-      prototypeUrl: announcementForm.prototypeUrl
+      prototypeUrl: announcementForm.prototypeUrl,
+      previewUrl: announcementForm.previewUrl,
+      reason: announcementForm.reason
     };
     try {
       const announcement = await api.createAnnouncement(token, {
@@ -540,6 +545,18 @@ export function AdminPanel() {
         results: result.teamName ? [result] : []
       });
       setMessage(`${announcement.title} berhasil dipublish.`);
+      setAnnouncementForm((current) => ({
+        ...current,
+        title: "",
+        body: "",
+        teamName: "",
+        categoryName: "",
+        institution: "",
+        workTitle: "",
+        prototypeUrl: "",
+        previewUrl: "",
+        reason: ""
+      }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal membuat pengumuman.");
     } finally {
@@ -1214,16 +1231,24 @@ export function AdminPanel() {
                       <option value="info">Info</option>
                     </select>
                   </div>
+                  {announcementForm.type === "pemenang" ? (
+                    <TextField
+                      label="Peringkat"
+                      type="number"
+                      value={announcementForm.rank}
+                      onChange={(value) => setAnnouncementForm((current) => ({ ...current, rank: value }))}
+                    />
+                  ) : null}
                   {[
                     ["title", "Judul"],
-                    ["body", "Isi"],
                     ["teamName", "Nama Tim"],
                     ["categoryName", "Kategori"],
                     ["institution", "Instansi"],
                     ["workTitle", "Judul Karya"],
-                    ["prototypeUrl", "Link Prototype"]
+                    ["prototypeUrl", "Link Prototype"],
+                    ["previewUrl", "URL Preview Web"]
                   ].map(([key, label]) => (
-                    <div key={key} className={key === "body" ? "md:col-span-2" : ""}>
+                    <div key={key}>
                       <TextField
                         label={label}
                         value={(announcementForm as Record<string, string>)[key]}
@@ -1231,6 +1256,20 @@ export function AdminPanel() {
                       />
                     </div>
                   ))}
+                  <div className="md:col-span-2">
+                    <TextAreaField
+                      label="Isi"
+                      value={announcementForm.body}
+                      onChange={(value) => setAnnouncementForm((current) => ({ ...current, body: value }))}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <TextAreaField
+                      label="Alasan Menang / Catatan"
+                      value={announcementForm.reason}
+                      onChange={(value) => setAnnouncementForm((current) => ({ ...current, reason: value }))}
+                    />
+                  </div>
                 </div>
                 <div className="mt-5 flex justify-end">
                   <button className="btn-primary" disabled={loading}>
@@ -1478,15 +1517,18 @@ function TeamDetailPanel({
       <div className="mt-6">
         <p className="text-sm font-black">Anggota</p>
         <div className="mt-3 grid gap-3">
+          <div className="rounded-md border border-lagoon/20 bg-lagoon/5 p-3 text-sm">
+            <p className="font-black">1. {detail.team.leaderName}</p>
+            <p className="mt-1 text-ink/60">{detail.team.leaderEmail || "-"} - Ketua</p>
+          </div>
           {detail.team.members.map((member, index) => (
             <div key={`${member.email}-${index}`} className="rounded-md bg-cloud p-3 text-sm">
               <p className="font-black">
-                {index + 1}. {member.name}
+                {index + 2}. {member.name}
               </p>
               <p className="mt-1 text-ink/60">{member.email || "-"} - {member.role || "-"}</p>
             </div>
           ))}
-          {!detail.team.members.length ? <p className="text-sm text-ink/60">Tidak ada anggota tambahan.</p> : null}
         </div>
       </div>
 

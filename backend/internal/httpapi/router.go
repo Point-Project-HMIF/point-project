@@ -7,12 +7,18 @@ import (
 	"fmt"
 	"html"
 	"math/big"
+	"mime/multipart"
 	"net/http"
 	"net/mail"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/golang-jwt/jwt/v5"
@@ -27,6 +33,7 @@ type Server struct {
 	store     repository.Store
 	jwtSecret []byte
 	mailer    registrationMailer
+	files     submissionFileStorage
 }
 
 type registrationMailer interface {
@@ -38,9 +45,20 @@ type resendRegistrationMailer struct {
 	from   string
 }
 
+type submissionFileStorage interface {
+	UploadSubmissionFile(ctx context.Context, team models.Team, stage, field string, header *multipart.FileHeader) (string, error)
+}
+
+type r2SubmissionFileStorage struct {
+	client        *s3.Client
+	bucket        string
+	publicBaseURL string
+}
+
 type contextKey string
 
 const adminRoleContextKey contextKey = "adminRole"
+const maxSubmissionUploadBytes int64 = 80 << 20
 
 func newRegistrationMailer(apiKey, from string) registrationMailer {
 	apiKey = strings.TrimSpace(apiKey)
@@ -52,6 +70,102 @@ func newRegistrationMailer(apiKey, from string) registrationMailer {
 		client: resend.NewClient(apiKey),
 		from:   from,
 	}
+}
+
+func newSubmissionFileStorage(endpoint, bucket, accessKeyID, secretAccessKey, publicBaseURL string) submissionFileStorage {
+	endpoint = strings.TrimSpace(endpoint)
+	bucket = strings.TrimSpace(bucket)
+	accessKeyID = strings.TrimSpace(accessKeyID)
+	secretAccessKey = strings.TrimSpace(secretAccessKey)
+	if endpoint == "" || bucket == "" || accessKeyID == "" || secretAccessKey == "" {
+		return nil
+	}
+	cfg := aws.Config{
+		Region:      "auto",
+		Credentials: credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, ""),
+	}
+	client := s3.NewFromConfig(cfg, func(options *s3.Options) {
+		options.BaseEndpoint = aws.String(endpoint)
+		options.UsePathStyle = true
+	})
+	return &r2SubmissionFileStorage{
+		client:        client,
+		bucket:        bucket,
+		publicBaseURL: strings.TrimRight(strings.TrimSpace(publicBaseURL), "/"),
+	}
+}
+
+func (s *r2SubmissionFileStorage) UploadSubmissionFile(ctx context.Context, team models.Team, stage, field string, header *multipart.FileHeader) (string, error) {
+	if header == nil {
+		return "", nil
+	}
+	file, err := header.Open()
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	teamFolder := slugifyPathPart(team.Name)
+	if teamFolder == "" {
+		teamFolder = "tim"
+	}
+	if len(team.ID) >= 8 {
+		teamFolder += "-" + team.ID[:8]
+	}
+	ext := cleanFileExt(header.Filename)
+	base := slugifyPathPart(strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename)))
+	if base == "" {
+		base = field
+	}
+	key := fmt.Sprintf("submissions/%s/%s/%s-%d-%s%s", teamFolder, slugifyPathPart(stage), slugifyPathPart(field), time.Now().UnixNano(), base, ext)
+	contentType := header.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	if _, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(s.bucket),
+		Key:         aws.String(key),
+		Body:        file,
+		ContentType: aws.String(contentType),
+	}); err != nil {
+		return "", err
+	}
+	if s.publicBaseURL != "" {
+		return s.publicBaseURL + "/" + key, nil
+	}
+	return fmt.Sprintf("r2://%s/%s", s.bucket, key), nil
+}
+
+func cleanFileExt(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	if len(ext) < 2 || len(ext) > 12 {
+		return ""
+	}
+	for _, r := range ext[1:] {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return ""
+		}
+	}
+	return ext
+}
+
+func slugifyPathPart(value string) string {
+	var builder strings.Builder
+	lastDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			builder.WriteRune(r)
+			lastDash = false
+		case r == '.' || r == '_':
+			builder.WriteRune(r)
+			lastDash = false
+		case !lastDash && builder.Len() > 0:
+			builder.WriteRune('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(builder.String(), "-")
 }
 
 func (m *resendRegistrationMailer) SendRegistrationOTP(ctx context.Context, to, name, code string) error {
@@ -84,7 +198,18 @@ func (m *resendRegistrationMailer) SendRegistrationOTP(ctx context.Context, to, 
 	return err
 }
 
-func NewRouter(store repository.Store, jwtSecret string, allowedOrigins []string, resendAPIKey, resendFrom string) http.Handler {
+func NewRouter(
+	store repository.Store,
+	jwtSecret string,
+	allowedOrigins []string,
+	resendAPIKey,
+	resendFrom,
+	r2Endpoint,
+	r2Bucket,
+	r2AccessKeyID,
+	r2SecretAccessKey,
+	r2PublicBaseURL string,
+) http.Handler {
 	if len(allowedOrigins) == 0 {
 		allowedOrigins = []string{"http://localhost:5173"}
 	}
@@ -93,6 +218,7 @@ func NewRouter(store repository.Store, jwtSecret string, allowedOrigins []string
 		store:     store,
 		jwtSecret: []byte(jwtSecret),
 		mailer:    newRegistrationMailer(resendAPIKey, resendFrom),
+		files:     newSubmissionFileStorage(r2Endpoint, r2Bucket, r2AccessKeyID, r2SecretAccessKey, r2PublicBaseURL),
 	}
 
 	r := chi.NewRouter()
@@ -291,6 +417,10 @@ func (s *Server) participantDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createSubmission(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		s.createMultipartSubmission(w, r)
+		return
+	}
 	var input models.SubmissionRequest
 	if err := decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -302,6 +432,106 @@ func (s *Server) createSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusCreated, submission)
+}
+
+func (s *Server) createMultipartSubmission(w http.ResponseWriter, r *http.Request) {
+	if s.files == nil {
+		writeMessage(w, http.StatusServiceUnavailable, "penyimpanan file R2 belum dikonfigurasi")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxSubmissionUploadBytes)
+	if err := r.ParseMultipartForm(maxSubmissionUploadBytes); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	teamID := chi.URLParam(r, "teamID")
+	detail, err := s.store.GetTeamDetail(r.Context(), teamID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	input := models.SubmissionRequest{
+		Stage: strings.TrimSpace(r.FormValue("stage")),
+	}
+	permission, err := resolveSubmissionPermission(detail, input.Stage)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if !permission.CanSubmit {
+		writeMessage(w, http.StatusBadRequest, permission.Reason)
+		return
+	}
+	input.Stage = permission.Stage.Key
+	fileFields := map[string]*string{
+		"proposal":  &input.ProposalURL,
+		"prototype": &input.PrototypeURL,
+		"ppt":       &input.PPTURL,
+		"report":    &input.ReportURL,
+		"poster":    &input.PosterURL,
+	}
+	for field, target := range fileFields {
+		header, err := firstMultipartFile(r, field)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if header == nil {
+			continue
+		}
+		url, err := s.files.UploadSubmissionFile(r.Context(), detail.Team, input.Stage, field, header)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+		*target = url
+	}
+	if input.ProposalURL == "" && input.PrototypeURL == "" && input.PPTURL == "" && input.ReportURL == "" && input.PosterURL == "" {
+		writeMessage(w, http.StatusBadRequest, "minimal satu file karya wajib diunggah")
+		return
+	}
+	submission, err := s.store.CreateSubmission(r.Context(), teamID, input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusCreated, submission)
+}
+
+func resolveSubmissionPermission(detail models.TeamDetail, stageKey string) (models.TeamSubmissionStage, error) {
+	if len(detail.SubmissionStages) == 0 {
+		return models.TeamSubmissionStage{}, fmt.Errorf("belum ada tahap upload untuk event ini")
+	}
+	stageKey = strings.TrimSpace(stageKey)
+	if stageKey == "" {
+		for _, item := range detail.SubmissionStages {
+			if item.CanSubmit {
+				return item, nil
+			}
+		}
+		return detail.SubmissionStages[0], nil
+	}
+	for _, item := range detail.SubmissionStages {
+		if item.Stage.Key == stageKey || item.Stage.ID == stageKey {
+			return item, nil
+		}
+	}
+	return models.TeamSubmissionStage{}, fmt.Errorf("tahap upload tidak ditemukan")
+}
+
+func firstMultipartFile(r *http.Request, field string) (*multipart.FileHeader, error) {
+	if r.MultipartForm == nil || r.MultipartForm.File == nil {
+		return nil, nil
+	}
+	files := r.MultipartForm.File[field]
+	if len(files) == 0 {
+		return nil, nil
+	}
+	header := files[0]
+	if header.Size <= 0 {
+		return nil, fmt.Errorf("file %s kosong", field)
+	}
+	return header, nil
 }
 
 func (s *Server) adminLogin(w http.ResponseWriter, r *http.Request) {

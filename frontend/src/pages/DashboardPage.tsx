@@ -1,21 +1,34 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Bell, CheckCircle2, FileUp, Link as LinkIcon, RefreshCw, Send, ShieldAlert } from "lucide-react";
+import { Bell, CheckCircle2, ExternalLink, FileUp, RefreshCw, Send, ShieldAlert } from "lucide-react";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api } from "../lib/api";
-import type { ParticipantDashboard, SubmissionPayload } from "../lib/types";
+import type { ParticipantDashboard, Submission, SubmissionPayload } from "../lib/types";
+
+const submissionFileFields: Array<{
+  key: Exclude<keyof SubmissionPayload, "stage">;
+  label: string;
+  accept?: string;
+}> = [
+  { key: "proposal", label: "File Proposal", accept: ".pdf,.doc,.docx" },
+  { key: "prototype", label: "File Prototype / Web Preview", accept: ".zip,.rar,.7z,.pdf,.html" },
+  { key: "ppt", label: "File PPT", accept: ".ppt,.pptx,.pdf" },
+  { key: "report", label: "File Laporan", accept: ".pdf,.doc,.docx" },
+  { key: "poster", label: "File Poster", accept: ".png,.jpg,.jpeg,.pdf" }
+];
 
 export function DashboardPage() {
   const [teamId, setTeamId] = useState(localStorage.getItem("pointproject.teamId") ?? "");
   const [dashboard, setDashboard] = useState<ParticipantDashboard | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [uploadResetKey, setUploadResetKey] = useState(0);
   const [submission, setSubmission] = useState<SubmissionPayload>({
     stage: "awal",
-    proposalUrl: "",
-    prototypeUrl: "",
-    pptUrl: "",
-    reportUrl: "",
-    posterUrl: ""
+    proposal: null,
+    prototype: null,
+    ppt: null,
+    report: null,
+    poster: null
   });
 
   const verified = dashboard?.team.verificationStatus === "verified";
@@ -67,6 +80,10 @@ export function DashboardPage() {
       setError(permission?.reason || "Tahap upload ini belum tersedia untuk tim kamu.");
       return;
     }
+    if (!submissionFileFields.some((field) => submission[field.key])) {
+      setError("Pilih minimal satu file karya sebelum mengirim submission.");
+      return;
+    }
     setLoading(true);
     try {
       await api.submitWork(dashboard.team.id, submission);
@@ -74,7 +91,8 @@ export function DashboardPage() {
         const normalized = normalizeDashboard(nextDashboard);
         setDashboard(normalized);
         const nextStage = normalized.submissionStages.find((item) => item.canSubmit)?.stage.key ?? submission.stage;
-        setSubmission({ stage: nextStage, proposalUrl: "", prototypeUrl: "", pptUrl: "", reportUrl: "", posterUrl: "" });
+        setSubmission({ stage: nextStage, proposal: null, prototype: null, ppt: null, report: null, poster: null });
+        setUploadResetKey((current) => current + 1);
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission gagal dikirim.");
@@ -136,7 +154,7 @@ export function DashboardPage() {
                   <span className="font-bold text-ink/55">ID Tim:</span> {dashboard.team.id}
                 </p>
                 <p className="text-sm">
-                  <span className="font-bold text-ink/55">Jumlah Anggota:</span> {dashboard.team.members.length} orang
+                  <span className="font-bold text-ink/55">Jumlah Peserta:</span> {dashboard.team.members.length + 1} orang termasuk ketua
                 </p>
               </div>
             </article>
@@ -181,8 +199,7 @@ export function DashboardPage() {
                     <tr>
                       <th className="py-3 pr-3">Tahap</th>
                       <th className="py-3 pr-3">Status</th>
-                      <th className="py-3 pr-3">Proposal</th>
-                      <th className="py-3 pr-3">Prototype</th>
+                      <th className="py-3 pr-3">Berkas</th>
                       <th className="py-3 pr-3">Tanggal</th>
                     </tr>
                   </thead>
@@ -192,24 +209,7 @@ export function DashboardPage() {
                         <td className="py-3 pr-3 font-bold">{item.stage}</td>
                         <td className="py-3 pr-3">{item.status}</td>
                         <td className="py-3 pr-3">
-                          {item.proposalUrl ? (
-                            <a className="inline-flex items-center gap-1 font-bold text-lagoon" href={item.proposalUrl}>
-                              <LinkIcon size={14} />
-                              Link
-                            </a>
-                          ) : (
-                            "-"
-                          )}
-                        </td>
-                        <td className="py-3 pr-3">
-                          {item.prototypeUrl ? (
-                            <a className="inline-flex items-center gap-1 font-bold text-lagoon" href={item.prototypeUrl}>
-                              <LinkIcon size={14} />
-                              Link
-                            </a>
-                          ) : (
-                            "-"
-                          )}
+                          <SubmissionLinks submission={item} />
                         </td>
                         <td className="py-3 pr-3">{new Date(item.submittedAt).toLocaleDateString("id-ID")}</td>
                       </tr>
@@ -243,23 +243,18 @@ export function DashboardPage() {
                   </select>
                   {!submissionStages.length ? <p className="mt-2 text-xs font-bold text-coral">Belum ada tahap upload dari admin.</p> : null}
                 </div>
-                {[
-                  ["proposalUrl", "Link Proposal"],
-                  ["prototypeUrl", "Link Prototype"],
-                  ["pptUrl", "Link PPT"],
-                  ["reportUrl", "Link Laporan"],
-                  ["posterUrl", "Link Poster"]
-                ].map(([key, label]) => (
+                {submissionFileFields.map(({ key, label, accept }) => (
                   <div key={key}>
                     <label className="label" htmlFor={key}>
                       {label}
                     </label>
                     <input
+                      key={`${uploadResetKey}-${key}`}
                       id={key}
                       className="field"
-                      value={(submission as Record<string, string>)[key] ?? ""}
-                      onChange={(event) => setSubmission((current) => ({ ...current, [key]: event.target.value }))}
-                      placeholder="https://..."
+                      type="file"
+                      accept={accept}
+                      onChange={(event) => setSubmission((current) => ({ ...current, [key]: event.target.files?.[0] ?? null }))}
                     />
                   </div>
                 ))}
@@ -299,4 +294,33 @@ function normalizeDashboard(dashboard: ParticipantDashboard): ParticipantDashboa
     rules: dashboard.rules ?? { eventId: dashboard.event.id, minTeamMembers: 2, maxTeamMembers: 3 },
     submissionStages: dashboard.submissionStages ?? []
   };
+}
+
+function SubmissionLinks({ submission }: { submission: Submission }) {
+  const links = [
+    ["Proposal", submission.proposalUrl],
+    ["Prototype", submission.prototypeUrl],
+    ["PPT", submission.pptUrl],
+    ["Laporan", submission.reportUrl],
+    ["Poster", submission.posterUrl]
+  ].filter(([, url]) => Boolean(url));
+
+  if (!links.length) return <span className="text-ink/45">-</span>;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {links.map(([label, url]) => (
+        <a
+          key={label}
+          className="inline-flex items-center gap-1 rounded-md border border-ink/10 px-2 py-1 text-xs font-black text-lagoon hover:bg-lagoon hover:text-white"
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <ExternalLink size={13} />
+          {label}
+        </a>
+      ))}
+    </div>
+  );
 }

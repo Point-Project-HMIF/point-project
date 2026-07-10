@@ -707,19 +707,6 @@ func (s *PostgresStore) CreateTeam(ctx context.Context, input models.Registratio
 	team.Members = input.Members
 	team.CreatedAt = created.Format(time.RFC3339)
 
-	if input.ProposalURL != "" || input.PrototypeURL != "" {
-		stageKey, err := s.firstSubmissionStageKey(ctx, eventID)
-		if err != nil {
-			return models.Team{}, err
-		}
-		if _, err := tx.Exec(ctx, `
-			insert into submissions (team_id, stage, proposal_url, prototype_url, status)
-			values ($1, $2, $3, $4, 'submitted')
-		`, team.ID, stageKey, strings.TrimSpace(input.ProposalURL), strings.TrimSpace(input.PrototypeURL)); err != nil {
-			return models.Team{}, err
-		}
-	}
-
 	if err := tx.Commit(ctx); err != nil {
 		return models.Team{}, err
 	}
