@@ -120,6 +120,7 @@ export function AdminPanel() {
   const [selectedTeam, setSelectedTeam] = useState<TeamDetail | null>(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [announcementTeamSearch, setAnnouncementTeamSearch] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -148,12 +149,7 @@ export function AdminPanel() {
     rank: "1",
     title: "",
     body: "",
-    teamName: "",
-    categoryName: "",
-    institution: "",
-    workTitle: "",
-    prototypeUrl: "",
-    previewUrl: "",
+    teamId: "",
     reason: ""
   });
 
@@ -181,6 +177,18 @@ export function AdminPanel() {
       return matchesSearch && matchesStatus;
     });
   }, [teams, search, status]);
+
+  const announcementTeams = useMemo(() => {
+    const q = announcementTeamSearch.toLowerCase().trim();
+    return teams
+      .filter((team) => !event?.id || team.eventId === event.id)
+      .filter((team) => !q || `${team.name} ${team.leaderName} ${team.institution} ${team.categoryName}`.toLowerCase().includes(q));
+  }, [announcementTeamSearch, event?.id, teams]);
+
+  const selectedAnnouncementTeam = useMemo(
+    () => teams.find((team) => team.id === announcementForm.teamId) ?? null,
+    [announcementForm.teamId, teams]
+  );
 
   const statCards: Array<{ label: string; value: number; icon: LucideIcon }> = [
     { label: "Event", value: stats.events, icon: CalendarClock },
@@ -524,39 +532,45 @@ export function AdminPanel() {
       setError("Event aktif belum dimuat.");
       return;
     }
+    const isTeamAnnouncement = announcementForm.type !== "info";
+    if (isTeamAnnouncement && !selectedAnnouncementTeam) {
+      setError("Pilih tim dari dropdown untuk pengumuman finalis atau pemenang.");
+      return;
+    }
     setLoading(true);
     setError("");
-    const result: AnnouncementResult = {
-      rank: announcementForm.type === "pemenang" ? Number(announcementForm.rank) || 1 : 0,
-      teamName: announcementForm.teamName,
-      categoryName: announcementForm.categoryName,
-      institution: announcementForm.institution,
-      workTitle: announcementForm.workTitle,
-      prototypeUrl: announcementForm.prototypeUrl,
-      previewUrl: announcementForm.previewUrl,
-      reason: announcementForm.reason
-    };
     try {
+      let result: AnnouncementResult | null = null;
+      if (isTeamAnnouncement && selectedAnnouncementTeam) {
+        const detail = await api.adminTeamDetail(token, selectedAnnouncementTeam.id);
+        const prototypeUrl = latestPrototypeURL(detail);
+        result = {
+          rank: announcementForm.type === "pemenang" ? Number(announcementForm.rank) || 1 : 0,
+          teamName: selectedAnnouncementTeam.name,
+          categoryName: selectedAnnouncementTeam.categoryName,
+          institution: selectedAnnouncementTeam.institution,
+          workTitle: announcementForm.title.trim(),
+          prototypeUrl,
+          previewUrl: prototypeUrl,
+          reason: announcementForm.reason
+        };
+      }
       const announcement = await api.createAnnouncement(token, {
         eventId: event.id,
         type: announcementForm.type,
         title: announcementForm.title,
         body: announcementForm.body,
-        results: result.teamName ? [result] : []
+        results: result ? [result] : []
       });
       setMessage(`${announcement.title} berhasil dipublish.`);
       setAnnouncementForm((current) => ({
         ...current,
         title: "",
         body: "",
-        teamName: "",
-        categoryName: "",
-        institution: "",
-        workTitle: "",
-        prototypeUrl: "",
-        previewUrl: "",
+        teamId: "",
         reason: ""
       }));
+      setAnnouncementTeamSearch("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal membuat pengumuman.");
     } finally {
@@ -1224,7 +1238,13 @@ export function AdminPanel() {
                       id="announcement-type"
                       className="field"
                       value={announcementForm.type}
-                      onChange={(event) => setAnnouncementForm((current) => ({ ...current, type: event.target.value }))}
+                      onChange={(event) =>
+                        setAnnouncementForm((current) => ({
+                          ...current,
+                          type: event.target.value,
+                          teamId: event.target.value === "info" ? "" : current.teamId
+                        }))
+                      }
                     >
                       <option value="finalis">Finalis</option>
                       <option value="pemenang">Pemenang</option>
@@ -1239,23 +1259,51 @@ export function AdminPanel() {
                       onChange={(value) => setAnnouncementForm((current) => ({ ...current, rank: value }))}
                     />
                   ) : null}
-                  {[
-                    ["title", "Judul"],
-                    ["teamName", "Nama Tim"],
-                    ["categoryName", "Kategori"],
-                    ["institution", "Instansi"],
-                    ["workTitle", "Judul Karya"],
-                    ["prototypeUrl", "Link Prototype"],
-                    ["previewUrl", "URL Preview Web"]
-                  ].map(([key, label]) => (
-                    <div key={key}>
-                      <TextField
-                        label={label}
-                        value={(announcementForm as Record<string, string>)[key]}
-                        onChange={(value) => setAnnouncementForm((current) => ({ ...current, [key]: value }))}
-                      />
+                  <TextField
+                    label="Judul"
+                    value={announcementForm.title}
+                    onChange={(value) => setAnnouncementForm((current) => ({ ...current, title: value }))}
+                  />
+                  {announcementForm.type !== "info" ? (
+                    <div className="md:col-span-2">
+                      <label className="label" htmlFor="announcement-team-search">
+                        Cari Tim
+                      </label>
+                      <div className="grid gap-3 md:grid-cols-[1fr_1.1fr]">
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink/35" size={17} />
+                          <input
+                            id="announcement-team-search"
+                            className="field pl-10"
+                            value={announcementTeamSearch}
+                            onChange={(event) => setAnnouncementTeamSearch(event.target.value)}
+                            placeholder="Cari nama tim, ketua, instansi"
+                          />
+                        </div>
+                        <select
+                          className="field"
+                          value={announcementForm.teamId}
+                          onChange={(event) => setAnnouncementForm((current) => ({ ...current, teamId: event.target.value }))}
+                        >
+                          <option value="">Pilih tim dari hasil pencarian</option>
+                          {announcementTeams.map((team) => (
+                            <option key={team.id} value={team.id}>
+                              {team.name} - {team.categoryName} - {team.institution}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {selectedAnnouncementTeam ? (
+                        <div className="mt-3 grid gap-3 rounded-md border border-lagoon/20 bg-lagoon/5 p-3 text-sm md:grid-cols-3">
+                          <Info label="Tim" value={selectedAnnouncementTeam.name} />
+                          <Info label="Kategori" value={selectedAnnouncementTeam.categoryName} />
+                          <Info label="Instansi" value={selectedAnnouncementTeam.institution} />
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs font-bold text-ink/45">Data tim, kategori, instansi, dan link prototype akan diambil otomatis dari database.</p>
+                      )}
                     </div>
-                  ))}
+                  ) : null}
                   <div className="md:col-span-2">
                     <TextAreaField
                       label="Isi"
@@ -1335,6 +1383,10 @@ function normalizeTeamDetail(detail: TeamDetail): TeamDetail {
     submissions: detail.submissions ?? [],
     submissionStages: detail.submissionStages ?? []
   };
+}
+
+function latestPrototypeURL(detail: TeamDetail) {
+  return (detail.submissions ?? []).find((submission) => submission.prototypeUrl)?.prototypeUrl ?? "";
 }
 
 function sortFAQs(items: FAQ[]) {

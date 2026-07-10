@@ -177,7 +177,7 @@ export function AnnouncementsPage() {
                             </td>
                             <td className="py-3 pr-4">{result.categoryName}</td>
                             <td className="py-3 pr-4">{result.institution}</td>
-                            <td className="py-3 pr-4">{result.workTitle}</td>
+                            <td className="py-3 pr-4">{result.workTitle || announcement.title}</td>
                           </tr>
                         ))}
                       </tbody>

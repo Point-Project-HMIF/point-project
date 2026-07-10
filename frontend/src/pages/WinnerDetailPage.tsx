@@ -72,7 +72,7 @@ export function WinnerDetailPage() {
               <div className="mt-7 grid gap-3 border-t border-ink/10 pt-5 text-sm">
                 <Info label="Kategori" value={winner.categoryName || "-"} />
                 <Info label="Instansi" value={winner.institution || "-"} />
-                <Info label="Judul Karya" value={winner.workTitle || "-"} />
+                <Info label="Judul Karya" value={winner.workTitle || winner.announcement.title || "-"} />
               </div>
 
               <div className="mt-7">
