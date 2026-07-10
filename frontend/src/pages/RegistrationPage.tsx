@@ -380,7 +380,7 @@ export function RegistrationPage() {
                       <p className="text-sm font-black">Anggota {index + 2}</p>
                       <button
                         type="button"
-                        className="btn-secondary px-3 py-2"
+                        className="inline-flex items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-black text-red-600 transition hover:border-red-600 hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                         onClick={() => removeMember(index)}
                         aria-label={`Hapus anggota ${index + 2}`}
                       >

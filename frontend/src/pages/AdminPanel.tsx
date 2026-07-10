@@ -1017,7 +1017,7 @@ export function AdminPanel() {
                         <p className="text-sm font-black">Tahap {index + 1}</p>
                         <button
                           type="button"
-                          className="btn-secondary px-3 py-2"
+                          className="inline-flex items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-black text-red-600 transition hover:border-red-600 hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                           onClick={() => setTimelineDraft((current) => current.filter((_, itemIndex) => itemIndex !== index))}
                         >
                           <Trash2 size={16} />
@@ -1071,7 +1071,7 @@ export function AdminPanel() {
                           <p className="text-sm font-black">Tahap Upload {index + 1}</p>
                           <button
                             type="button"
-                            className="btn-secondary px-3 py-2"
+                            className="inline-flex items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-black text-red-600 transition hover:border-red-600 hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={() => setSubmissionStageDraft((current) => current.filter((_, itemIndex) => itemIndex !== index))}
                           >
                             <Trash2 size={16} />
@@ -1218,7 +1218,12 @@ export function AdminPanel() {
                             <button type="button" className="btn-secondary px-3 py-2" onClick={() => editFAQ(faq)} disabled={loading}>
                               Edit
                             </button>
-                            <button type="button" className="btn-secondary px-3 py-2" onClick={() => deleteFAQ(faq.id)} disabled={loading}>
+                            <button
+                              type="button"
+                              className="inline-flex items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-black text-red-600 transition hover:border-red-600 hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => deleteFAQ(faq.id)}
+                              disabled={loading}
+                            >
                               Hapus
                             </button>
                           </div>
@@ -1604,12 +1609,12 @@ function TeamDetailPanel({
       </div>
 
       {canDelete ? (
-        <div className="mt-5 rounded-md border border-coral/20 bg-coral/5 p-3">
-          <p className="text-sm font-black text-coral">Zona Super Admin</p>
+        <div className="mt-5 rounded-md border border-red-200 bg-red-50 p-3">
+          <p className="text-sm font-black text-red-600">Zona Super Admin</p>
           <p className="mt-1 text-xs leading-5 text-ink/60">Menghapus tim akan menghapus data pendaftaran, submission, dan akses tahap dari database.</p>
           <button
             type="button"
-            className="mt-3 inline-flex items-center justify-center gap-2 rounded-md border border-coral/30 bg-white px-3 py-2 text-sm font-black text-coral transition hover:bg-coral hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-3 inline-flex items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-black text-red-600 transition hover:border-red-600 hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
             disabled={loading}
             onClick={() => onDeleteTeam(detail.team.id, detail.team.name)}
           >
