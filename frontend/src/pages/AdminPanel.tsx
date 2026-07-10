@@ -26,6 +26,7 @@ import {
 import clsx from "clsx";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api, isNotFoundError } from "../lib/api";
+import { toastError, toastSuccess } from "../lib/toast";
 import type {
   AdminStats,
   AdminUser,
@@ -199,6 +200,16 @@ export function AdminPanel() {
     { label: "Pemenang", value: stats.winners, icon: Megaphone }
   ];
 
+  function showError(message: string) {
+    setError(message);
+    toastError(message);
+  }
+
+  function showMessage(nextMessage: string) {
+    setMessage(nextMessage);
+    toastSuccess(nextMessage);
+  }
+
   async function loadAdminData(nextToken = token) {
     if (!nextToken) return;
     setLoading(true);
@@ -250,7 +261,7 @@ export function AdminPanel() {
         sortOrder: current.eventId === active.id ? current.sortOrder : (nextFAQs ?? []).length + 1
       }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memuat data admin.");
+      showError(err instanceof Error ? err.message : "Gagal memuat data admin.");
     } finally {
       setLoading(false);
     }
@@ -277,8 +288,9 @@ export function AdminPanel() {
       localStorage.setItem("pointproject.adminToken", response.token);
       localStorage.setItem("pointproject.adminUser", JSON.stringify(response.user));
       await loadAdminData(response.token);
+      showMessage(`Berhasil masuk sebagai ${response.user.name}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login admin gagal.");
+      showError(err instanceof Error ? err.message : "Login admin gagal.");
     } finally {
       setLoading(false);
     }
@@ -291,7 +303,7 @@ export function AdminPanel() {
       const detail = await api.adminTeamDetail(token, teamId);
       setSelectedTeam(normalizeTeamDetail(detail));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memuat detail tim.");
+      showError(err instanceof Error ? err.message : "Gagal memuat detail tim.");
     } finally {
       setLoading(false);
     }
@@ -306,9 +318,9 @@ export function AdminPanel() {
       if (selectedTeam?.team.id === teamId) {
         setSelectedTeam({ ...selectedTeam, team: nextTeam });
       }
-      setMessage(`Status ${nextTeam.name} diperbarui menjadi ${nextTeam.verificationStatus}.`);
+      showMessage(`Status ${nextTeam.name} diperbarui menjadi ${nextTeam.verificationStatus}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memperbarui status tim.");
+      showError(err instanceof Error ? err.message : "Gagal memperbarui status tim.");
     } finally {
       setLoading(false);
     }
@@ -316,7 +328,7 @@ export function AdminPanel() {
 
   async function deleteTeam(teamId: string, teamName: string) {
     if (!isSuperAdmin) {
-      setError("Hanya super admin yang dapat menghapus tim.");
+      showError("Hanya super admin yang dapat menghapus tim.");
       return;
     }
     const confirmed = window.confirm(`Hapus tim ${teamName}? Semua data pendaftaran, submission, dan akses tahap tim ini akan ikut terhapus dari database.`);
@@ -327,10 +339,10 @@ export function AdminPanel() {
       await api.deleteTeam(token, teamId);
       setSelectedTeam(null);
       setTeams((current) => current.filter((team) => team.id !== teamId));
-      setMessage(`Tim ${teamName} berhasil dihapus.`);
       await loadAdminData(token);
+      showMessage(`Tim ${teamName} berhasil dihapus.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menghapus tim.");
+      showError(err instanceof Error ? err.message : "Gagal menghapus tim.");
     } finally {
       setLoading(false);
     }
@@ -351,9 +363,9 @@ export function AdminPanel() {
         endDate: "",
         status: "draft"
       });
-      setMessage(`${nextEvent.name} berhasil dibuat. Aktifkan dari tab Event Aktif saat siap dipakai.`);
+      showMessage(`${nextEvent.name} berhasil dibuat. Aktifkan dari tab Event Aktif saat siap dipakai.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal membuat event.");
+      showError(err instanceof Error ? err.message : "Gagal membuat event.");
     } finally {
       setLoading(false);
     }
@@ -375,13 +387,13 @@ export function AdminPanel() {
       await loadAdminData(token);
       window.dispatchEvent(new CustomEvent("pointproject:event-changed"));
       setTab(action.type === "activate" ? "overview" : "event-switch");
-      setMessage(
+      showMessage(
         action.type === "lock"
           ? `${nextEvent.name} sudah dikunci permanen dari admin.`
           : `${nextEvent.name} sekarang menjadi event aktif.`
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memproses event.");
+      showError(err instanceof Error ? err.message : "Gagal memproses event.");
     } finally {
       setSwitchingEvent(false);
       setLoading(false);
@@ -390,7 +402,7 @@ export function AdminPanel() {
 
   async function saveTimeline() {
     if (!event) {
-      setError("Event aktif belum dimuat.");
+      showError("Event aktif belum dimuat.");
       return;
     }
     setLoading(true);
@@ -400,9 +412,9 @@ export function AdminPanel() {
       const nextTimeline = await api.updateTimeline(token, event.id, normalized);
       setTimeline(nextTimeline);
       setTimelineDraft(nextTimeline.map(timelineToInput));
-      setMessage("Jadwal berhasil diperbarui.");
+      showMessage("Jadwal berhasil diperbarui.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan jadwal.");
+      showError(err instanceof Error ? err.message : "Gagal menyimpan jadwal.");
     } finally {
       setLoading(false);
     }
@@ -410,7 +422,7 @@ export function AdminPanel() {
 
   async function saveRules() {
     if (!event) {
-      setError("Event aktif belum dimuat.");
+      showError("Event aktif belum dimuat.");
       return;
     }
     setLoading(true);
@@ -422,9 +434,9 @@ export function AdminPanel() {
         minTeamMembers: nextRules.minTeamMembers,
         maxTeamMembers: nextRules.maxTeamMembers
       });
-      setMessage("Aturan jumlah anggota berhasil diperbarui.");
+      showMessage("Aturan jumlah anggota berhasil diperbarui.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan aturan anggota.");
+      showError(err instanceof Error ? err.message : "Gagal menyimpan aturan anggota.");
     } finally {
       setLoading(false);
     }
@@ -432,7 +444,7 @@ export function AdminPanel() {
 
   async function saveSubmissionStages() {
     if (!event) {
-      setError("Event aktif belum dimuat.");
+      showError("Event aktif belum dimuat.");
       return;
     }
     setLoading(true);
@@ -441,13 +453,13 @@ export function AdminPanel() {
       const normalized = submissionStageDraft.map((item, index) => ({ ...item, sortOrder: index + 1 }));
       const nextStages = await api.updateSubmissionStages(token, event.id, normalized);
       setSubmissionStageDraft(nextStages.map(submissionStageToInput));
-      setMessage("Tahap upload karya berhasil diperbarui.");
+      showMessage("Tahap upload karya berhasil diperbarui.");
       if (selectedTeam) {
         const detail = await api.adminTeamDetail(token, selectedTeam.team.id);
         setSelectedTeam(normalizeTeamDetail(detail));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan tahap upload karya.");
+      showError(err instanceof Error ? err.message : "Gagal menyimpan tahap upload karya.");
     } finally {
       setLoading(false);
     }
@@ -459,9 +471,9 @@ export function AdminPanel() {
     try {
       const detail = await api.updateTeamStageAccess(token, teamId, stageId, isAllowed);
       setSelectedTeam(normalizeTeamDetail(detail));
-      setMessage(isAllowed ? "Akses tahap tim dibuka." : "Akses tahap tim ditutup.");
+      showMessage(isAllowed ? "Akses tahap tim dibuka." : "Akses tahap tim ditutup.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memperbarui akses tahap tim.");
+      showError(err instanceof Error ? err.message : "Gagal memperbarui akses tahap tim.");
     } finally {
       setLoading(false);
     }
@@ -475,9 +487,9 @@ export function AdminPanel() {
       const nextUser = await api.createAdminUser(token, adminForm);
       setAdminUsers((current) => [nextUser, ...current]);
       setAdminForm({ name: "", nim: "", role: "admin", division: "", password: "" });
-      setMessage(`Akun ${nextUser.email} berhasil dibuat.`);
+      showMessage(`Akun ${nextUser.email} berhasil dibuat.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal membuat akun panitia.");
+      showError(err instanceof Error ? err.message : "Gagal membuat akun panitia.");
     } finally {
       setLoading(false);
     }
@@ -486,7 +498,7 @@ export function AdminPanel() {
   async function saveFAQ(eventSubmit: FormEvent<HTMLFormElement>) {
     eventSubmit.preventDefault();
     if (!event) {
-      setError("Event aktif belum dimuat.");
+      showError("Event aktif belum dimuat.");
       return;
     }
     setLoading(true);
@@ -507,9 +519,9 @@ export function AdminPanel() {
       );
       setEditingFaqId("");
       setFaqForm(emptyFAQForm(event.id, faqs.length + (editingFaqId ? 1 : 2)));
-      setMessage(editingFaqId ? "FAQ berhasil diperbarui." : "FAQ baru berhasil ditambahkan.");
+      showMessage(editingFaqId ? "FAQ berhasil diperbarui." : "FAQ baru berhasil ditambahkan.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan FAQ.");
+      showError(err instanceof Error ? err.message : "Gagal menyimpan FAQ.");
     } finally {
       setLoading(false);
     }
@@ -540,9 +552,9 @@ export function AdminPanel() {
       if (editingFaqId === faqId) {
         cancelFAQEdit();
       }
-      setMessage("FAQ berhasil dihapus.");
+      showMessage("FAQ berhasil dihapus.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menghapus FAQ.");
+      showError(err instanceof Error ? err.message : "Gagal menghapus FAQ.");
     } finally {
       setLoading(false);
     }
@@ -551,12 +563,12 @@ export function AdminPanel() {
   async function createAnnouncement(eventSubmit: FormEvent<HTMLFormElement>) {
     eventSubmit.preventDefault();
     if (!event) {
-      setError("Event aktif belum dimuat.");
+      showError("Event aktif belum dimuat.");
       return;
     }
     const isTeamAnnouncement = announcementForm.type !== "info";
     if (isTeamAnnouncement && !selectedAnnouncementTeam) {
-      setError("Pilih tim dari dropdown untuk pengumuman finalis atau pemenang.");
+      showError("Pilih tim dari dropdown untuk pengumuman finalis atau pemenang.");
       return;
     }
     setLoading(true);
@@ -584,7 +596,7 @@ export function AdminPanel() {
         body: announcementForm.body,
         results: result ? [result] : []
       });
-      setMessage(`${announcement.title} berhasil dipublish.`);
+      showMessage(`${announcement.title} berhasil dipublish.`);
       setAnnouncementForm((current) => ({
         ...current,
         title: "",
@@ -594,7 +606,7 @@ export function AdminPanel() {
       }));
       setAnnouncementTeamSearch("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal membuat pengumuman.");
+      showError(err instanceof Error ? err.message : "Gagal membuat pengumuman.");
     } finally {
       setLoading(false);
     }
@@ -610,7 +622,6 @@ export function AdminPanel() {
             body="Panel ini digunakan untuk verifikasi peserta, jadwal, pembuatan akun, dan publikasi pengumuman."
           />
           <form onSubmit={submitLogin} className="mt-10 rounded-lg border border-ink/10 bg-white p-6 shadow-soft">
-            {error ? <p className="mb-4 rounded-md bg-coral/10 px-4 py-3 text-sm font-bold text-coral">{error}</p> : null}
             <div className="grid gap-4">
               <div>
                 <label className="label" htmlFor="admin-email">
@@ -676,8 +687,6 @@ export function AdminPanel() {
           </div>
         </div>
 
-        {error ? <p className="mb-5 rounded-md bg-coral/10 px-4 py-3 text-sm font-bold text-coral">{error}</p> : null}
-        {message ? <p className="mb-5 rounded-md bg-lagoon/10 px-4 py-3 text-sm font-bold text-lagoon">{message}</p> : null}
         {switchingEvent ? (
           <div className="mb-5 rounded-lg border border-lagoon/20 bg-lagoon/10 px-4 py-4 text-sm font-bold text-lagoon">
             Memuat event baru dan menyesuaikan tampilan website...

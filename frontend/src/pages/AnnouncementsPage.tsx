@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Award, ExternalLink, Filter, Medal, Newspaper, Trophy } from "lucide-react";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api } from "../lib/api";
+import { toastError } from "../lib/toast";
 import { winnerPath } from "../lib/winner";
 import type { Announcement, AnnouncementResult, Event } from "../lib/types";
 
@@ -15,7 +16,6 @@ export function AnnouncementsPage() {
   const [eventId, setEventId] = useState("");
   const [type, setType] = useState("");
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -29,7 +29,7 @@ export function AnnouncementsPage() {
       })
       .catch((err) => {
         if (!alive) return;
-        setError(err instanceof Error ? err.message : "Gagal memuat tahun pengumuman.");
+        toastError(err instanceof Error ? err.message : "Gagal memuat tahun pengumuman.");
       });
     return () => {
       alive = false;
@@ -41,7 +41,7 @@ export function AnnouncementsPage() {
     api
       .announcements(eventId, type)
       .then((nextAnnouncements) => setAnnouncements(nextAnnouncements ?? []))
-      .catch((err) => setError(err instanceof Error ? err.message : "Gagal memuat pengumuman."));
+      .catch((err) => toastError(err instanceof Error ? err.message : "Gagal memuat pengumuman."));
   }, [eventId, type]);
 
   const selectedEvent = useMemo(() => events.find((item) => item.id === eventId), [events, eventId]);
@@ -65,7 +65,6 @@ export function AnnouncementsPage() {
           title="Berita resmi Point Project"
           body="Pengumuman finalis, pemenang, dan informasi event disusun seperti kanal berita agar mudah diikuti per tahun."
         />
-        {error ? <p className="mt-8 rounded-md bg-coral/10 px-4 py-3 text-sm font-bold text-coral">{error}</p> : null}
 
         <div className="mt-10 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
           <article className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">

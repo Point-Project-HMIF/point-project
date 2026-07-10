@@ -3,6 +3,7 @@ import { Check, ChevronLeft, ChevronRight, Send, Trash2, UserPlus } from "lucide
 import clsx from "clsx";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api } from "../lib/api";
+import { toastError, toastSuccess } from "../lib/toast";
 import type { Category, Event, EventRules, RegistrationPayload, Team, TeamMember } from "../lib/types";
 
 const steps = ["Data Tim", "Anggota", "Kategori", "Verifikasi"];
@@ -55,7 +56,7 @@ export function RegistrationPage() {
       })
       .catch((err) => {
         if (!alive) return;
-        setError(err instanceof Error ? err.message : "Gagal memuat data event dari server.");
+        showError(err instanceof Error ? err.message : "Gagal memuat data event dari server.");
       });
     return () => {
       alive = false;
@@ -92,33 +93,38 @@ export function RegistrationPage() {
     setMembers((current) => (current.length >= additionalMemberLimit ? current : [...current, emptyMember()]));
   }
 
+  function showError(message: string) {
+    setError(message);
+    toastError(message);
+  }
+
   function goNext() {
     setError("");
     if (step === 0) {
       if (!form.name || !form.leaderName || !form.leaderEmail || !form.leaderPhone || !form.institution) {
-        setError("Data tim, ketua, email, WhatsApp, dan asal instansi wajib diisi.");
+        showError("Data tim, ketua, email, WhatsApp, dan asal instansi wajib diisi.");
         return;
       }
       if (!isValidWhatsAppNumber(form.leaderPhone)) {
-        setError("Nomor WhatsApp tidak valid. Gunakan format 08xxxxxxxxxx atau +628xxxxxxxxxx.");
+        showError("Nomor WhatsApp tidak valid. Gunakan format 08xxxxxxxxxx atau +628xxxxxxxxxx.");
         return;
       }
     }
     if (step === 1) {
       if (totalMembers < rules.minTeamMembers) {
-        setError(`Minimal ${rules.minTeamMembers} peserta termasuk ketua wajib diisi.`);
+        showError(`Minimal ${rules.minTeamMembers} peserta termasuk ketua wajib diisi.`);
         return;
       }
       const invalidMember = members.some((member) => member.name.trim() || member.email.trim() || member.role.trim()
         ? !member.name.trim() || !member.email.trim() || !member.role.trim()
         : false);
       if (invalidMember) {
-        setError("Setiap slot anggota yang diisi wajib lengkap: nama, email, dan peran.");
+        showError("Setiap slot anggota yang diisi wajib lengkap: nama, email, dan peran.");
         return;
       }
     }
     if (step === 2 && (!form.categoryId || !form.batch)) {
-      setError("Batch dan kategori lomba wajib dipilih.");
+      showError("Batch dan kategori lomba wajib dipilih.");
       return;
     }
     setStep((current) => current + 1);
@@ -128,7 +134,7 @@ export function RegistrationPage() {
     setError("");
     setOtpMessage("");
     if (!form.leaderName || !form.leaderEmail) {
-      setError("Nama dan email ketua wajib diisi sebelum meminta OTP.");
+      showError("Nama dan email ketua wajib diisi sebelum meminta OTP.");
       return;
     }
     setOtpSending(true);
@@ -138,8 +144,9 @@ export function RegistrationPage() {
         leaderEmail: form.leaderEmail
       });
       setOtpMessage(response.message);
+      toastSuccess(response.message);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal mengirim OTP.");
+      showError(err instanceof Error ? err.message : "Gagal mengirim OTP.");
     } finally {
       setOtpSending(false);
     }
@@ -149,20 +156,20 @@ export function RegistrationPage() {
     eventForm.preventDefault();
     setError("");
     if (!form.eventId || !form.categoryId || !form.name || !form.leaderName || !form.leaderEmail || !form.leaderPhone || !form.institution) {
-      setError("Event, kategori, data tim, ketua, email, WhatsApp, dan asal instansi wajib diisi.");
+      showError("Event, kategori, data tim, ketua, email, WhatsApp, dan asal instansi wajib diisi.");
       return;
     }
     const normalizedPhone = normalizeWhatsAppNumber(form.leaderPhone);
     if (!normalizedPhone) {
-      setError("Nomor WhatsApp tidak valid. Gunakan format 08xxxxxxxxxx atau +628xxxxxxxxxx.");
+      showError("Nomor WhatsApp tidak valid. Gunakan format 08xxxxxxxxxx atau +628xxxxxxxxxx.");
       return;
     }
     if (!/^\d{6}$/.test(form.otpCode.trim())) {
-      setError("Masukkan kode OTP yang dikirim ke email ketua.");
+      showError("Masukkan kode OTP yang dikirim ke email ketua.");
       return;
     }
     if (totalMembers < rules.minTeamMembers || totalMembers > rules.maxTeamMembers) {
-      setError(`Jumlah peserta harus ${rules.minTeamMembers}-${rules.maxTeamMembers} orang termasuk ketua.`);
+      showError(`Jumlah peserta harus ${rules.minTeamMembers}-${rules.maxTeamMembers} orang termasuk ketua.`);
       return;
     }
     setLoading(true);
@@ -174,9 +181,10 @@ export function RegistrationPage() {
         members: filledMembers
       });
       localStorage.setItem("pointproject.teamId", team.id);
+      toastSuccess("Pendaftaran berhasil terkirim. Simpan ID tim untuk membuka dashboard peserta.");
       setCreatedTeam(team);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Pendaftaran gagal dikirim.");
+      showError(err instanceof Error ? err.message : "Pendaftaran gagal dikirim.");
     } finally {
       setLoading(false);
     }
@@ -246,8 +254,6 @@ export function RegistrationPage() {
           </aside>
 
           <form onSubmit={submit} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft sm:p-7">
-            {error ? <p className="mb-5 rounded-md bg-coral/10 px-4 py-3 text-sm font-bold text-coral">{error}</p> : null}
-
             {step === 0 ? (
               <div className="grid gap-5 md:grid-cols-2">
                 <div className="md:col-span-2">
@@ -460,7 +466,6 @@ export function RegistrationPage() {
                       {otpSending ? "Mengirim..." : "Kirim OTP"}
                     </button>
                   </div>
-                  {otpMessage ? <p className="mt-3 rounded-md bg-white px-3 py-2 text-sm font-bold text-lagoon">{otpMessage}</p> : null}
                   <div className="mt-4 max-w-xs">
                     <label className="label" htmlFor="otp-code">
                       Kode OTP

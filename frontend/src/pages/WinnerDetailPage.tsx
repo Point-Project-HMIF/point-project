@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, ExternalLink, Medal, Trophy } from "lucide-react";
 import { StatusPill } from "../components/Layout";
 import { api } from "../lib/api";
+import { toastError } from "../lib/toast";
 import { teamSlug } from "../lib/winner";
 import type { Announcement, AnnouncementResult, Event } from "../lib/types";
 
@@ -25,7 +26,11 @@ export function WinnerDetailPage() {
         setEvent((events ?? []).find((item) => item.id === eventId) ?? null);
         setAnnouncements(nextAnnouncements ?? []);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Gagal memuat detail pemenang."))
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : "Gagal memuat detail pemenang.";
+        setError(message);
+        toastError(message);
+      })
       .finally(() => setLoading(false));
   }, [eventId]);
 
@@ -51,7 +56,10 @@ export function WinnerDetailPage() {
             <p className="font-black">Memuat detail pemenang...</p>
           </article>
         ) : error ? (
-          <p className="mt-8 rounded-md bg-coral/10 px-4 py-3 text-sm font-bold text-coral">{error}</p>
+          <article className="mt-8 rounded-lg border border-ink/10 bg-white p-8 text-center shadow-soft">
+            <p className="font-black">Detail belum bisa dimuat.</p>
+            <p className="mt-2 text-sm text-ink/60">Silakan coba buka kembali halaman pengumuman.</p>
+          </article>
         ) : !winner ? (
           <article className="mt-8 rounded-lg border border-ink/10 bg-white p-8 text-center shadow-soft">
             <p className="font-black">Tim pemenang tidak ditemukan.</p>

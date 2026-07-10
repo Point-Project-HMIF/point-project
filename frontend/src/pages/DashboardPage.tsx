@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Bell, CheckCircle2, ExternalLink, FileUp, RefreshCw, Send, ShieldAlert } from "lucide-react";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api, resolveFileURL } from "../lib/api";
+import { toastError, toastSuccess } from "../lib/toast";
 import type { ParticipantDashboard, Submission, SubmissionPayload } from "../lib/types";
 
 const submissionFileFields: Array<{
@@ -43,9 +44,14 @@ export function DashboardPage() {
     [dashboard]
   );
 
+  function showError(message: string) {
+    setError(message);
+    toastError(message);
+  }
+
   function loadDashboard(nextTeamId = teamId) {
     if (!nextTeamId) {
-      setError("Masukkan ID tim untuk membuka dashboard.");
+      showError("Masukkan ID tim untuk membuka dashboard.");
       return;
     }
     setLoading(true);
@@ -60,7 +66,7 @@ export function DashboardPage() {
         setUploadResetKey((current) => current + 1);
         localStorage.setItem("pointproject.teamId", nextTeamId);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Dashboard tidak ditemukan."))
+      .catch((err) => showError(err instanceof Error ? err.message : "Dashboard tidak ditemukan."))
       .finally(() => setLoading(false));
   }
 
@@ -72,21 +78,21 @@ export function DashboardPage() {
     event.preventDefault();
     setError("");
     if (!dashboard) {
-      setError("Muat dashboard tim terlebih dahulu.");
+      showError("Muat dashboard tim terlebih dahulu.");
       return;
     }
     const permission = dashboard.submissionStages.find((item) => item.stage.key === submission.stage);
     if (!permission?.canSubmit) {
-      setError(permission?.reason || "Tahap upload ini belum tersedia untuk tim kamu.");
+      showError(permission?.reason || "Tahap upload ini belum tersedia untuk tim kamu.");
       return;
     }
     const prototypeUrl = submission.prototypeUrl?.trim() ?? "";
     if (prototypeUrl && !isFigmaURL(prototypeUrl)) {
-      setError("Link prototype harus menggunakan URL Figma yang valid.");
+      showError("Link prototype harus menggunakan URL Figma yang valid.");
       return;
     }
     if (!prototypeUrl && !submissionFileFields.some((field) => submission[field.key])) {
-      setError("Isi link Figma prototype atau pilih minimal satu file karya sebelum mengirim submission.");
+      showError("Isi link Figma prototype atau pilih minimal satu file karya sebelum mengirim submission.");
       return;
     }
     setLoading(true);
@@ -99,8 +105,9 @@ export function DashboardPage() {
         setSubmission({ stage: nextStage, proposal: null, prototypeUrl: "", ppt: null, report: null, poster: null });
         setUploadResetKey((current) => current + 1);
       });
+      toastSuccess("Submission berhasil dikirim.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Submission gagal dikirim.");
+      showError(err instanceof Error ? err.message : "Submission gagal dikirim.");
     } finally {
       setLoading(false);
     }
@@ -130,8 +137,6 @@ export function DashboardPage() {
             </button>
           </div>
         </div>
-
-        {error ? <p className="mt-5 rounded-md bg-coral/10 px-4 py-3 text-sm font-bold text-coral">{error}</p> : null}
 
         {!dashboard ? (
           <article className="mt-8 rounded-lg border border-ink/10 bg-white p-8 text-center shadow-soft">

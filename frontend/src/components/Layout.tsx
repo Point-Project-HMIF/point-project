@@ -1,7 +1,8 @@
 import { Link, NavLink } from "react-router-dom";
-import { CalendarDays, Home, LayoutDashboard, Megaphone, ShieldCheck, UserPlus } from "lucide-react";
+import { CalendarDays, Home, LayoutDashboard, Megaphone, Menu, ShieldCheck, UserPlus, X } from "lucide-react";
 import clsx from "clsx";
 import { useEffect, useState, type ReactNode } from "react";
+import { ToastViewport } from "./ToastViewport";
 import { api } from "../lib/api";
 import type { Event } from "../lib/types";
 
@@ -15,6 +16,7 @@ const navItems = [
 
 export function Layout({ children }: { children: ReactNode }) {
   const [event, setEvent] = useState<Event | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -38,7 +40,7 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-cloud text-ink">
       <header className="sticky top-0 z-40 border-b border-ink/10 bg-white/92 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          <Link to="/" className="flex items-center gap-3">
+          <Link to="/" className="flex items-center gap-3" onClick={() => setMobileOpen(false)}>
             <span className="grid h-10 w-10 place-items-center rounded-lg bg-ink text-sm font-black text-white">PP</span>
             <span>
               <span className="block text-sm font-black uppercase tracking-wide">Point Project</span>
@@ -65,24 +67,41 @@ export function Layout({ children }: { children: ReactNode }) {
               );
             })}
           </nav>
+          <button
+            type="button"
+            className="grid h-10 w-10 place-items-center rounded-md border border-ink/10 text-ink transition hover:bg-cloud md:hidden"
+            onClick={() => setMobileOpen((current) => !current)}
+            aria-label={mobileOpen ? "Tutup menu" : "Buka menu"}
+            aria-expanded={mobileOpen}
+          >
+            {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
-        <nav className="grid grid-cols-5 border-t border-ink/10 bg-white md:hidden">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  clsx("grid place-items-center gap-1 px-1 py-2 text-[11px]", isActive ? "text-lagoon" : "text-ink/60")
-                }
-              >
-                <Icon size={17} />
-                <span className="truncate">{item.label}</span>
-              </NavLink>
-            );
-          })}
-        </nav>
+        {mobileOpen ? (
+          <div className="border-t border-ink/10 bg-white md:hidden">
+            <nav className="mx-auto grid max-w-7xl gap-1 px-4 py-3 sm:px-6">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setMobileOpen(false)}
+                    className={({ isActive }) =>
+                      clsx(
+                        "flex items-center gap-3 rounded-md px-3 py-3 text-sm font-black transition",
+                        isActive ? "bg-ink text-white" : "text-ink/70 hover:bg-cloud hover:text-ink"
+                      )
+                    }
+                  >
+                    <Icon className="shrink-0" size={18} />
+                    <span className="truncate">{item.label}</span>
+                  </NavLink>
+                );
+              })}
+            </nav>
+          </div>
+        ) : null}
       </header>
       <main>{children}</main>
       <footer className="border-t border-ink/10 bg-white">
@@ -107,6 +126,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </footer>
+      <ToastViewport />
     </div>
   );
 }

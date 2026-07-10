@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api, isNotFoundError } from "../lib/api";
+import { toastError } from "../lib/toast";
 import type { Announcement, Category, Event, EventRules, FAQ, TimelineItem } from "../lib/types";
 
 export function HomePage() {
@@ -23,7 +24,6 @@ export function HomePage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [rules, setRules] = useState<EventRules | null>(null);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -53,7 +53,7 @@ export function HomePage() {
       })
       .catch((err) => {
         if (!alive) return;
-        setError(err instanceof Error ? err.message : "Gagal memuat data dari server.");
+        toastError(err instanceof Error ? err.message : "Gagal memuat data dari server.");
       });
     return () => {
       alive = false;
@@ -85,7 +85,6 @@ export function HomePage() {
             <p className="mt-5 max-w-2xl text-lg leading-8 text-white/84">
               {event?.theme ?? "Data event sedang dimuat dari database."}
             </p>
-            {error ? <p className="mt-4 rounded-md bg-coral/90 px-4 py-3 text-sm font-bold text-white">{error}</p> : null}
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link to="/daftar" className="btn-primary bg-mint text-ink hover:bg-emerald-300">
                 Daftar Sekarang
