@@ -117,7 +117,7 @@ export function DashboardPage() {
   }
 
   return (
-    <section className="py-14 scroll-pop" data-scroll-pop>
+    <section className="experience-page py-14 scroll-pop" data-scroll-pop>
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeading
           eyebrow="Dashboard Peserta"

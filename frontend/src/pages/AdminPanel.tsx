@@ -638,7 +638,7 @@ export function AdminPanel() {
 
   if (!token || !user) {
     return (
-      <section className="py-14">
+      <section className="experience-page py-14">
         <div className="mx-auto max-w-xl px-4 sm:px-6 lg:px-8">
           <SectionHeading
             eyebrow="Admin Panel"
@@ -685,7 +685,7 @@ export function AdminPanel() {
   }
 
   return (
-    <section className="py-6 sm:py-8">
+    <section className="experience-page py-6 sm:py-8">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">

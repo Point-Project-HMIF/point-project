@@ -62,29 +62,29 @@ export function ToastViewport() {
             role="status"
             aria-live="polite"
             className={clsx(
-              "pointer-events-auto flex gap-3 rounded-lg border bg-white p-4 shadow-soft",
-              item.type === "success" && "border-primary/25",
-              item.type === "error" && "border-orange/25",
-              item.type === "info" && "border-dark/10"
+              "pointer-events-auto flex gap-3 border bg-[#080d16]/95 p-4 text-white shadow-[0_22px_80px_rgba(0,0,0,0.38)] backdrop-blur",
+              item.type === "success" && "border-cyan-300/25",
+              item.type === "error" && "border-orange/35",
+              item.type === "info" && "border-white/12"
             )}
           >
             <span
               className={clsx(
-                "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md",
-                item.type === "success" && "bg-primary/10 text-primary",
-                item.type === "error" && "bg-orange/10 text-orange",
-                item.type === "info" && "bg-light text-dark"
+                "mt-0.5 grid h-8 w-8 shrink-0 place-items-center border",
+                item.type === "success" && "border-cyan-300/25 bg-cyan-300/10 text-cyan-100",
+                item.type === "error" && "border-orange/30 bg-orange/10 text-orange",
+                item.type === "info" && "border-white/12 bg-white/8 text-white"
               )}
             >
               <Icon size={18} />
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-black">{item.title}</p>
-              <p className="mt-1 break-words text-sm leading-5 text-dark/68">{item.message}</p>
+              <p className="mt-1 break-words text-sm leading-5 text-white/62">{item.message}</p>
             </div>
             <button
               type="button"
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-dark/45 transition hover:bg-light hover:text-dark"
+              className="grid h-7 w-7 shrink-0 place-items-center text-white/45 transition hover:bg-white hover:text-[#05070d]"
               onClick={() => setItems((current) => current.filter((toast) => toast.id !== item.id))}
               aria-label="Tutup notifikasi"
             >

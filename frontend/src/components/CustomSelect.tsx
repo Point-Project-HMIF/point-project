@@ -71,7 +71,7 @@ export function CustomSelect({
         type="button"
         className={clsx(
           "field flex min-h-[42px] items-center justify-between gap-3 text-left",
-          disabled && "cursor-not-allowed bg-light text-dark/45 opacity-80"
+          disabled && "cursor-not-allowed opacity-55"
         )}
         onClick={() => {
           if (!disabled && hasEnabledOptions) setOpen((current) => !current);
@@ -81,7 +81,7 @@ export function CustomSelect({
         aria-expanded={open}
         aria-controls={listId}
       >
-        <span className={clsx("min-w-0 truncate", selected ? "text-dark" : "text-dark/45")}>
+        <span className={clsx("min-w-0 truncate", selected ? "text-dark" : "text-dark/42")}>
           {selected?.label ?? placeholder}
         </span>
         <ChevronDown className={clsx("shrink-0 text-dark/45 transition", open && "rotate-180")} size={17} />
@@ -92,7 +92,7 @@ export function CustomSelect({
           id={listId}
           role="listbox"
           aria-labelledby={buttonId}
-          className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-[130] max-h-72 overflow-y-auto rounded-md border border-dark/10 bg-white p-1 shadow-soft"
+          className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-[130] max-h-72 overflow-y-auto rounded-md border border-dark/10 bg-white p-1 shadow-[0_22px_80px_rgba(6,27,51,0.14)]"
         >
           {options.map((option) => {
             const active = option.value === value;
@@ -105,8 +105,8 @@ export function CustomSelect({
                 disabled={option.disabled}
                 className={clsx(
                   "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left text-sm transition",
-                  active ? "bg-primary/10 text-primary" : "text-dark hover:bg-light",
-                  option.disabled && "cursor-not-allowed text-dark/35 hover:bg-white"
+                  active ? "bg-primary/10 text-primary" : "text-dark/72 hover:bg-primary/5 hover:text-dark",
+                  option.disabled && "cursor-not-allowed text-dark/30 hover:bg-transparent"
                 )}
                 onClick={() => {
                   if (option.disabled) return;
@@ -117,7 +117,7 @@ export function CustomSelect({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-black">{option.label}</span>
                   {option.description ? (
-                    <span className="mt-0.5 block break-words text-xs font-bold text-dark/45">{option.description}</span>
+                    <span className="mt-0.5 block break-words text-xs font-bold text-dark/42">{option.description}</span>
                   ) : null}
                 </span>
                 {active ? <Check className="mt-0.5 shrink-0" size={16} /> : null}

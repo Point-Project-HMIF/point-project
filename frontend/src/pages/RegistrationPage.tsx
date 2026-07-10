@@ -243,7 +243,7 @@ export function RegistrationPage() {
 
   if (createdTeam) {
     return (
-      <section className="py-16 scroll-pop" data-scroll-pop>
+      <section className="experience-page py-16 scroll-pop" data-scroll-pop>
         <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
           <div className="rounded-lg border border-primary/20 bg-white p-8 text-center shadow-soft scroll-pop" data-scroll-pop>
             <span className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-primary text-white">
@@ -267,7 +267,7 @@ export function RegistrationPage() {
   }
 
   return (
-    <section className="py-14 scroll-pop" data-scroll-pop>
+    <section className="experience-page py-14 scroll-pop" data-scroll-pop>
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <SectionHeading
           eyebrow="Pendaftaran"

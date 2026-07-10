@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import {
-  ArrowRight,
   CalendarCheck,
   CheckCircle2,
   ExternalLink,
@@ -9,13 +8,21 @@ import {
   Landmark,
   Mail,
   MapPin,
+  Rocket,
   Trophy,
   UsersRound
 } from "lucide-react";
-import { SectionHeading } from "../components/Layout";
+import { CubeParticleCloud } from "../components/CubeParticleCloud";
 import { api, isNotFoundError } from "../lib/api";
 import { toastError } from "../lib/toast";
 import type { Announcement, Category, Event, EventRules, FAQ, TimelineItem } from "../lib/types";
+
+const systemCards = [
+  { icon: UsersRound, label: "Peserta", text: "Registrasi tim, verifikasi OTP, dashboard, dan riwayat submission." },
+  { icon: CalendarCheck, label: "Panitia", text: "Kontrol jadwal, tahap upload, FAQ, pengumuman, dan akses final." },
+  { icon: Trophy, label: "Publik", text: "Finalis, pemenang, arsip event, dan rubrik karya tampil dalam satu kanal." },
+  { icon: CheckCircle2, label: "Arsip", text: "Data tiap periode tetap tersimpan ketika event berikutnya aktif." }
+];
 
 export function HomePage() {
   const [loading, setLoading] = useState(true);
@@ -25,6 +32,7 @@ export function HomePage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [rules, setRules] = useState<EventRules | null>(null);
+  const [heroDarkProgress, setHeroDarkProgress] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -74,164 +82,217 @@ export function HomePage() {
     };
   }, []);
 
+  useEffect(() => {
+    let frame = 0;
+    const update = () => {
+      const target = document.getElementById("rubik-scroll-area");
+      if (!target) return;
+      const rect = target.getBoundingClientRect();
+      const travel = Math.max(1, rect.height - window.innerHeight);
+      const progress = Math.min(1, Math.max(0, -rect.top / travel));
+      const nextDark = progress >= 0.24 && progress < 0.985 ? 1 : 0;
+      setHeroDarkProgress(nextDark);
+    };
+    const schedule = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(update);
+    };
+
+    schedule();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, []);
+
   const winnerAnnouncement = useMemo(
     () => (announcements ?? []).find((announcement) => announcement.type === "pemenang"),
     [announcements]
   );
   const eventName = event?.name ?? "Point Project";
+  const [headlineTop, headlineBottom] = useMemo(() => splitHeroTitle(eventName), [eventName]);
   const publicFaqs = useMemo(() => faqs.filter((faq) => !isTeamRuleFAQ(faq)), [faqs]);
+  const heroInDarkMode = heroDarkProgress > 0.46;
 
   return (
-    <>
-      <section className="relative isolate overflow-hidden bg-dark text-white">
-        <img
-          src="/point-project-hero.png"
-          alt={`Ilustrasi kompetisi UI/UX ${eventName}`}
-          className="absolute inset-0 h-full w-full object-cover opacity-40"
-        />
-        <div className="absolute inset-0 bg-dark/82" />
-        <div className="relative mx-auto grid min-h-[76vh] max-w-7xl content-center px-4 py-20 sm:px-6 lg:px-8">
-          <div className="max-w-4xl reveal-up">
-            <div className="inline-flex items-center text-xs font-black uppercase tracking-[0.22em] text-teal">
-              Kompetisi UI/UX Nasional
-            </div>
-            <h1 className="mt-6 max-w-3xl text-4xl font-black leading-tight sm:text-5xl lg:text-6xl">
-              {eventName}
-            </h1>
-            {loading ? (
-              <div className="mt-6 max-w-2xl space-y-3">
-                <Skeleton className="h-5 w-4/5 skeleton-dark sm:w-2/3" />
-              </div>
-            ) : (
-              <p className="mt-5 max-w-2xl text-base leading-8 text-white/80 sm:text-lg">
-                {event?.theme ?? "Data event sedang dimuat dari database."}
-              </p>
-            )}
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link to="/daftar" className="btn-primary bg-orange text-white hover:bg-orange-600">
-                Daftar Sekarang
-                <ArrowRight size={18} />
-              </Link>
-              <Link to="/pengumuman" className="btn-secondary border-white/30 bg-white/10 text-white hover:bg-white hover:text-primary">
-                Lihat Pengumuman
-              </Link>
-            </div>
-            <div className="mt-10 grid max-w-3xl gap-3 sm:grid-cols-3 reveal-up-delay">
-              {[
-                ["2 Kategori", "Siswa dan mahasiswa"],
-                ["Tahap Jelas", "Jadwal dan submission terkurasi"],
-                ["Arsip Event", "Data tiap periode tetap tersimpan"]
-              ].map(([value, label]) => (
-                <div key={value} className="border-l-2 border-teal bg-white/10 px-4 py-3 surface-hover">
-                  <p className="text-xl font-black">{value}</p>
-                  <p className="mt-1 text-sm text-white/70">{label}</p>
+    <div
+      className="bg-white text-[#05070d]"
+      style={{ "--hero-dark-progress": heroDarkProgress } as CSSProperties}
+    >
+      <section id="rubik-scroll-area" className="relative isolate min-h-[285vh] overflow-clip border-b border-dark/10 bg-white">
+        <div className="sticky top-0 h-screen overflow-hidden bg-white">
+          <div className="hero-dark-stage absolute inset-0 z-0" aria-hidden="true" />
+          <div className="hero-starfield absolute inset-0 z-[1]" aria-hidden="true" />
+          <CubeParticleCloud className="absolute inset-0 z-[3]" cubeCount={360} color="#4da6ff" scrollTarget="#rubik-scroll-area" />
+          <div className="hero-diagonal-light absolute inset-0 z-[4]" aria-hidden="true" />
+          <div className="hero-dark-vignette absolute inset-0 z-[2]" aria-hidden="true" />
+          <div className="hero-dark-bottom absolute inset-x-0 bottom-0 z-[2] h-44" aria-hidden="true" />
+        </div>
+
+        <div className="relative z-10 -mt-[100vh]">
+          <div className="mx-auto grid min-h-screen max-w-7xl content-start px-4 pb-16 pt-20 sm:px-6 lg:px-8">
+            <div className={`hero-landing-copy w-full reveal-up ${heroInDarkMode ? "is-dark" : ""}`}>
+              <h1 className="synthetic-headline mt-5" aria-label={eventName}>
+                <span className="glitch-text is-active" data-text={headlineTop}>
+                  {headlineTop}
+                </span>
+                <span className="glitch-text is-active" data-text={headlineBottom}>
+                  {headlineBottom}
+                </span>
+              </h1>
+              {loading ? (
+                <div className="mt-4 max-w-2xl">
+                  <Skeleton className={`h-5 w-4/5 sm:w-2/3 ${heroInDarkMode ? "skeleton-dark" : ""}`} />
                 </div>
-              ))}
+              ) : (
+                <p className="hero-theme-text mt-4 max-w-2xl text-base leading-8 sm:text-lg">
+                  {event?.theme ?? "Kompetisi UI/UX nasional dengan alur pendaftaran, submission, seleksi, dan publikasi karya dalam satu sistem."}
+                </p>
+              )}
+              <div className="mt-7 grid max-w-3xl gap-3 sm:grid-cols-3 reveal-up-delay">
+                <Metric value={String(categories.length || 2).padStart(2, "0")} label="Kategori aktif" tone={heroInDarkMode ? "dark" : "light"} />
+                <Metric value={String(timeline.length || 4).padStart(2, "0")} label="Tahap event" tone={heroInDarkMode ? "dark" : "light"} />
+                <Metric value={String(announcements.length).padStart(2, "0")} label="Update publik" tone={heroInDarkMode ? "dark" : "light"} />
+              </div>
+              <p className={`hero-competition-marker mt-4 ${heroInDarkMode ? "is-dark" : ""}`}>
+                HMIF ITERA / UI UX Competition
+              </p>
+              <div className="hero-os-overview mt-7">
+                <div className="hero-os-copy">
+                  <p className="hero-os-eyebrow">Apa itu Point Project?</p>
+                  <h2 className="hero-os-title mt-3">
+                    Sistem kompetisi UI/UX yang rapi dari pendaftaran sampai publikasi karya.
+                  </h2>
+                  <p className="hero-os-body mt-4 max-w-2xl">
+                    Point Project menjadi ruang kerja bersama untuk peserta, panitia, dan publik. Tim mendaftar,
+                    mengirim karya, mengikuti tahap seleksi, lalu hasil finalis dan pemenang tersimpan sebagai arsip event.
+                  </p>
+                </div>
+                <div className="hero-os-box">
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-primary">Operating System</p>
+                    <span className="text-xs font-black text-dark/45">{event ? event.year : "ACTIVE"}</span>
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {systemCards.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <div key={item.label} className="hero-os-row">
+                          <Icon className="text-primary" size={19} />
+                          <div>
+                            <p className="text-sm font-black uppercase tracking-wide">{item.label}</p>
+                            <p className="mt-1 text-xs leading-5 text-dark/58">{item.text}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="hero-cube-phase mx-auto grid min-h-screen max-w-7xl content-center justify-items-center gap-10 px-4 pb-[7vh] pt-28 text-center sm:px-6 lg:px-8">
+            <div className="cube-opportunity-copy scroll-pop" data-scroll-pop>
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/72">Scanning Opportunities</p>
+              <h2 className="mt-4 text-4xl font-black uppercase leading-[0.9] text-white sm:text-6xl lg:text-7xl">
+                We see outstanding opportunity
+              </h2>
+              <p className="mx-auto mt-5 max-w-xl text-sm font-bold leading-7 text-white/72">
+                The advent of synthetic reality aligns with our mission: membuka ruang kompetisi yang rapi,
+                terukur, dan mudah diikuti peserta.
+              </p>
+            </div>
+            <div className="hero-glass-card hero-scroll-card scroll-pop" data-scroll-pop>
+              <p className="text-xs font-black uppercase tracking-[0.28em] text-white/56">Point Project</p>
+              <h2
+                className="glitch-text is-active mx-auto mt-5 max-w-3xl text-3xl font-black uppercase leading-[0.95] sm:text-5xl"
+                data-text="Jadi tim pertama yang mendaftar!"
+              >
+                Jadi tim pertama yang mendaftar!
+              </h2>
+              <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-white/70">
+                Kami membuka pendaftaran untuk perlombaan UI/UX tingkat Nasional
+              </p>
+              <Link to="/daftar" className="cyber-cta-button mx-auto mt-8">
+                <Rocket size={18} />
+                Daftarkan Tim kamu Sekarang!
+              </Link>
+            </div>
+          </div>
+
+          <div className="mx-auto grid min-h-[70vh] max-w-7xl items-end px-4 pb-20 sm:px-6 lg:px-8">
+            <div className="grid max-w-4xl gap-3 sm:grid-cols-3 scroll-pop" data-scroll-pop>
+              <Metric value={`${rules?.minTeamMembers ?? 2}-${rules?.maxTeamMembers ?? 3}`} label="Peserta per tim" tone="light" />
+              <Metric value={event ? String(event.year) : "----"} label="Periode aktif" tone="light" />
+              <Metric value="R2" label="Karya tersimpan" tone="light" />
             </div>
           </div>
         </div>
       </section>
 
-      <section className="bg-white py-14 scroll-pop" data-scroll-pop>
-        <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:px-8">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-primary">Tentang Kegiatan</p>
-            <h2 className="mt-3 text-3xl font-black sm:text-4xl">Satu platform untuk seluruh siklus kompetisi.</h2>
-            <p className="mt-4 text-base leading-7 text-dark/68">
-              {eventName} menyatukan informasi, registrasi tim, submission karya, verifikasi panitia,
-              pengumuman finalis, pemenang, dan arsip historis per tahun penyelenggaraan.
-            </p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {[
-              { icon: UsersRound, label: "Peserta", text: "Dashboard tim, status verifikasi, dan upload karya." },
-              { icon: CalendarCheck, label: "Panitia", text: "Kelola periode, jadwal, kategori, dan pengumuman." },
-              { icon: Trophy, label: "Publik", text: "Akses pengumuman finalis, pemenang, dan galeri karya." },
-              { icon: CheckCircle2, label: "Arsip", text: "Data tidak tertimpa saat Point Project berikutnya berjalan." }
-            ].map((item) => {
-              const Icon = item.icon;
-              return (
-                <article key={item.label} className="card border-l-4 border-l-primary surface-hover scroll-pop" data-scroll-pop>
-                  <Icon className="text-primary" size={24} />
-                  <h3 className="mt-4 font-black">{item.label}</h3>
-                  <p className="mt-2 text-sm leading-6 text-dark/65">{item.text}</p>
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <section className="py-16 scroll-pop" data-scroll-pop>
+      <div className="home-light-zone light-page">
+      <section className="tech-grid bg-[#05070d] py-16 scroll-pop" data-scroll-pop>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <SectionHeading
+          <TechHeading
             eyebrow="Timeline"
             title={`Jadwal ${eventName}`}
-            body="Tahapan disusun agar peserta dapat mengikuti proses pendaftaran, pengumpulan karya, seleksi, dan final dengan jelas."
+            body="Tahapan dibuat seperti relay: setiap fase punya tanggal, konteks, dan status yang bisa diperbarui dari admin panel."
           />
-          <div className="mt-10 rounded-lg border border-dark/10 bg-white p-4 shadow-soft sm:p-5">
+          <div className="mt-10 border border-white/10 bg-[#080d16]/92 p-4 sm:p-6">
             {loading ? (
               <TimelineSkeleton />
             ) : timeline.length ? (
-              <ol className="grid gap-5 sm:grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
-                {timeline.map((item) => (
-                  <li
-                    key={item.id}
-                    className="relative min-w-0 border-l border-dark/10 pb-1 pl-5 sm:border-l-0 sm:border-t sm:pb-0 sm:pl-0 sm:pt-5 scroll-pop"
-                    data-scroll-pop
-                  >
-                    <span className="absolute -left-[7px] top-1 h-3.5 w-3.5 rounded-full bg-primary ring-4 ring-white sm:-top-[7px] sm:left-0" />
-                    <p className="text-xs font-black uppercase tracking-wide text-primary">
-                      Step {String(item.sortOrder).padStart(2, "0")}
+              <ol className="grid gap-4 lg:grid-cols-[repeat(auto-fit,minmax(190px,1fr))]">
+                {timeline.map((item, index) => (
+                  <li key={item.id} className="relative min-w-0 border border-white/10 bg-white/[0.035] p-4 scroll-pop" data-scroll-pop>
+                    <span className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-200">
+                      Phase {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <p className="mt-4 text-xs font-black uppercase tracking-wide text-orange">
+                      {formatRange(item.startDate, item.endDate)}
                     </p>
-                    <p className="mt-2 text-xs font-bold text-orange">
-                      {item.startDate} - {item.endDate}
-                    </p>
-                    <h3 className="mt-3 break-words text-base font-black">{item.label}</h3>
-                    <p className="mt-2 text-sm leading-6 text-dark/65">{item.description}</p>
+                    <h3 className="mt-3 break-words text-lg font-black">{item.label}</h3>
+                    <p className="mt-3 text-sm leading-6 text-white/55">{item.description}</p>
                   </li>
                 ))}
               </ol>
             ) : (
-              <article className="rounded-lg border border-dashed border-dark/20 bg-white p-8 text-center">
-                <p className="font-black">Timeline belum tersedia.</p>
-                <p className="mt-2 text-sm text-dark/60">Jadwal akan tampil setelah admin mengatur tahapan event.</p>
-              </article>
+              <EmptyState title="Timeline belum tersedia." body="Jadwal akan tampil setelah admin mengatur tahapan event." />
             )}
           </div>
         </div>
       </section>
 
-      <section className="bg-white py-16 scroll-pop" data-scroll-pop>
+      <section className="border-y border-white/10 bg-[#0b101b] py-16 scroll-pop" data-scroll-pop>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <SectionHeading
+          <TechHeading
             eyebrow="Kategori"
-            title="Dua jalur kompetisi, satu panggung nasional"
-            body="Peserta memilih kategori sesuai jenjang pendidikan. Setiap kategori terhubung ke periode event agar arsip tetap rapi."
+            title="Dua jalur kompetisi, satu arena nasional"
+            body="Peserta memilih kategori sesuai jenjang pendidikan. Rules dan kebutuhan berkas tetap mengikuti event aktif."
           />
-          <div className="mt-10 grid gap-5 md:grid-cols-2">
+          <div className="mt-10 grid gap-4 md:grid-cols-2">
             {loading ? (
               <CategorySkeleton />
             ) : (
               categories.map((category) => (
-                <article
-                  key={category.id}
-                  className="rounded-lg border border-dark/10 bg-light p-6 shadow-soft surface-hover scroll-pop"
-                  data-scroll-pop
-                >
+                <article key={category.id} className="cyber-panel glitch-card bg-white/[0.04] p-6 scroll-pop" data-scroll-pop>
                   <div className="flex items-center gap-3">
                     {category.name.toLowerCase().includes("siswa") ? (
-                      <GraduationCap className="text-orange" size={28} />
+                      <GraduationCap className="text-orange" size={30} />
                     ) : (
-                      <Landmark className="text-primary" size={28} />
+                      <Landmark className="text-cyan-200" size={30} />
                     )}
-                    <h3 className="text-2xl font-black">{category.name}</h3>
+                    <h3 className="text-2xl font-black uppercase">{category.name}</h3>
                   </div>
-                  <p className="mt-4 text-sm leading-6 text-dark/65">{category.description}</p>
-                  <ul className="mt-5 space-y-3">
+                  <p className="mt-5 text-sm leading-7 text-white/58">{category.description}</p>
+                  <ul className="mt-6 grid gap-3">
                     {category.requirements.map((requirement) => (
-                      <li key={requirement} className="flex gap-3 text-sm leading-6 text-dark/70">
-                        <CheckCircle2 className="mt-0.5 shrink-0 text-primary" size={18} />
+                      <li key={requirement} className="flex gap-3 text-sm leading-6 text-white/70">
+                        <CheckCircle2 className="mt-0.5 shrink-0 text-cyan-200" size={18} />
                         {requirement}
                       </li>
                     ))}
@@ -243,46 +304,45 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="bg-dark py-16 text-white scroll-pop" data-scroll-pop>
-        <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
+      <section className="bg-[#05070d] py-16 scroll-pop" data-scroll-pop>
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.82fr_1.18fr] lg:px-8">
           <div>
-            <div className="inline-flex items-center text-xs font-black uppercase tracking-[0.22em] text-yellow">
-              Pengumuman
-            </div>
-            <h2 className="mt-4 text-3xl font-black sm:text-4xl">Finalis dan pemenang tampil publik.</h2>
-            <p className="mt-4 text-base leading-7 text-white/70">
-              Hasil kompetisi dapat difilter berdasarkan periode Point Project, lengkap dengan kategori dan galeri karya.
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-yellow">Pengumuman</p>
+            <h2 className="mt-4 text-3xl font-black uppercase leading-tight sm:text-5xl">
+              Finalis dan pemenang tampil publik.
+            </h2>
+            <p className="mt-5 text-sm leading-7 text-white/58">
+              Hasil kompetisi dapat difilter berdasarkan periode Point Project, lengkap dengan kategori,
+              rubrik alasan menang, dan galeri karya.
             </p>
-            <Link to="/pengumuman" className="mt-6 inline-flex items-center gap-2 text-sm font-black text-teal">
+            <Link to="/pengumuman" className="mt-7 inline-flex items-center gap-2 border-b border-cyan-300 pb-1 text-sm font-black uppercase tracking-wide text-cyan-200">
               Buka Arsip Pengumuman
               <ExternalLink size={16} />
             </Link>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-3">
             {loading ? (
               <AnnouncementSkeleton />
-            ) : (
+            ) : (winnerAnnouncement?.results ?? []).slice(0, 3).length ? (
               (winnerAnnouncement?.results ?? []).slice(0, 3).map((result) => (
-                <article
-                  key={`${result.rank}-${result.teamName}`}
-                  className="rounded-lg bg-white p-5 text-dark surface-hover scroll-pop"
-                  data-scroll-pop
-                >
-                  <span className="grid h-10 w-10 place-items-center rounded-md bg-yellow text-sm font-black">
+                <article key={`${result.rank}-${result.teamName}`} className="cyber-panel glitch-card bg-white/[0.045] p-5 transition hover:bg-white/[0.075] scroll-pop" data-scroll-pop>
+                  <span className="grid h-12 w-12 place-items-center bg-yellow text-lg font-black text-[#05070d]">
                     #{result.rank}
                   </span>
-                  <h3 className="mt-4 text-lg font-black">{result.teamName}</h3>
-                  <p className="mt-2 text-sm text-dark/65">{result.workTitle}</p>
-                  <p className="mt-4 text-xs font-bold uppercase tracking-wide text-primary">{result.categoryName}</p>
+                  <h3 className="mt-5 text-xl font-black">{result.teamName}</h3>
+                  <p className="mt-3 text-sm leading-6 text-white/56">{result.workTitle}</p>
+                  <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-cyan-200">{result.categoryName}</p>
                 </article>
               ))
+            ) : (
+              <EmptyState title="Pemenang belum dipublish." body="Podium akan muncul setelah panitia membuat pengumuman pemenang." />
             )}
           </div>
         </div>
       </section>
 
-      <section className="bg-white py-14 scroll-pop" data-scroll-pop>
-        <div className="mx-auto grid max-w-7xl items-start gap-8 px-4 sm:px-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:px-8">
+      <section className="border-t border-white/10 bg-[#0b101b] py-14 scroll-pop" data-scroll-pop>
+        <div className="mx-auto grid max-w-7xl items-start gap-8 px-4 sm:px-6 lg:grid-cols-[330px_minmax(0,1fr)] lg:px-8">
           <div className="grid auto-rows-max gap-3 self-start sm:grid-cols-2 lg:grid-cols-1">
             {[
               {
@@ -298,14 +358,10 @@ export function HomePage() {
             ].map((item) => {
               const Icon = item.icon;
               return (
-                <article key={item.title} className="rounded-lg border border-dark/10 bg-light p-4 sm:p-5 scroll-pop" data-scroll-pop>
-                  <Icon className="text-primary" size={22} />
-                  <h3 className="mt-3 text-sm font-black">{item.title}</h3>
-                  <p
-                    className={`mt-2 leading-6 text-dark/65 ${
-                      item.title === "Email" ? "break-all text-xs sm:text-sm" : "text-sm"
-                    }`}
-                  >
+                <article key={item.title} className="border border-white/10 bg-white/[0.04] p-5 scroll-pop" data-scroll-pop>
+                  <Icon className="text-cyan-200" size={22} />
+                  <h3 className="mt-4 text-sm font-black uppercase tracking-wide">{item.title}</h3>
+                  <p className={`mt-3 leading-6 text-white/58 ${item.title === "Email" ? "break-all text-xs sm:text-sm" : "text-sm"}`}>
                     {item.text}
                   </p>
                 </article>
@@ -313,41 +369,77 @@ export function HomePage() {
             })}
           </div>
           <div>
-            <div className="max-w-3xl">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-primary">FAQ</p>
-              <h2 className="mt-3 text-2xl font-black sm:text-3xl">Aturan dan Pertanyaan Umum</h2>
-              <p className="mt-3 text-sm leading-6 text-dark/65">
-                Daftar ini dikelola langsung oleh admin atau panitia untuk event aktif.
-              </p>
-            </div>
+            <TechHeading
+              eyebrow="FAQ"
+              title="Aturan dan pertanyaan umum"
+              body="Daftar ini dikelola langsung oleh admin atau panitia untuk event aktif."
+              align="left"
+            />
             <div className="mt-6 grid gap-3">
               {loading ? (
                 <FAQSkeleton />
               ) : rules ? (
-                <article className="rounded-lg border border-primary/20 bg-primary/5 p-4 scroll-pop" data-scroll-pop>
+                <article className="border border-cyan-300/20 bg-cyan-300/8 p-4 scroll-pop" data-scroll-pop>
                   <h3 className="font-black">Jumlah peserta per tim</h3>
-                  <p className="mt-2 text-sm leading-6 text-dark/65">
+                  <p className="mt-2 text-sm leading-6 text-white/58">
                     Minimal {rules.minTeamMembers} peserta dan maksimal {rules.maxTeamMembers} peserta, termasuk ketua.
                   </p>
                 </article>
               ) : null}
-              {!loading && publicFaqs.map((faq) => (
-                <article key={faq.id} className="rounded-lg border border-dark/10 bg-light p-4 scroll-pop" data-scroll-pop>
-                  <h3 className="font-black">{faq.question}</h3>
-                  <p className="mt-2 text-sm leading-6 text-dark/65">{faq.answer}</p>
-                </article>
-              ))}
+              {!loading &&
+                publicFaqs.map((faq) => (
+                  <article key={faq.id} className="border border-white/10 bg-white/[0.04] p-4 scroll-pop" data-scroll-pop>
+                    <h3 className="font-black">{faq.question}</h3>
+                    <p className="mt-2 text-sm leading-6 text-white/58">{faq.answer}</p>
+                  </article>
+                ))}
               {!loading && !rules && !publicFaqs.length ? (
-                <article className="rounded-lg border border-dashed border-dark/20 p-6 text-center">
-                  <h3 className="font-black">FAQ belum tersedia.</h3>
-                  <p className="mt-2 text-sm text-dark/60">Panitia akan memperbarui aturan melalui admin panel.</p>
-                </article>
+                <EmptyState title="FAQ belum tersedia." body="Panitia akan memperbarui aturan melalui admin panel." />
               ) : null}
             </div>
           </div>
         </div>
       </section>
-    </>
+      </div>
+    </div>
+  );
+}
+
+function Metric({ value, label, tone = "dark" }: { value: string; label: string; tone?: "dark" | "light" }) {
+  return (
+    <div className={tone === "light" ? "metric-card-light px-4 py-3" : "cyber-panel glitch-card bg-white/[0.045] px-4 py-3"}>
+      <p className={tone === "light" ? "text-3xl font-black text-[#05070d]" : "text-3xl font-black text-cyan-100"}>{value}</p>
+      <p className={tone === "light" ? "mt-1 text-xs font-bold uppercase tracking-wide text-[#05070d]/50" : "mt-1 text-xs font-bold uppercase tracking-wide text-white/45"}>{label}</p>
+    </div>
+  );
+}
+
+function TechHeading({
+  eyebrow,
+  title,
+  body,
+  align = "center"
+}: {
+  eyebrow: string;
+  title: string;
+  body?: string;
+  align?: "center" | "left";
+}) {
+  return (
+    <div className={align === "center" ? "mx-auto max-w-3xl text-center" : "max-w-3xl"}>
+      <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-200">{eyebrow}</p>
+      <h2 className="mt-3 text-3xl font-black uppercase leading-tight sm:text-5xl">{title}</h2>
+      {body ? <p className="mt-4 text-sm leading-7 text-white/58">{body}</p> : null}
+    </div>
+  );
+}
+
+function EmptyState({ title, body }: { title: string; body: string }) {
+  return (
+    <article className="border border-dashed border-white/18 bg-white/[0.025] p-8 text-center">
+      <p className="font-black">{title}</p>
+      <p className="mt-2 text-sm text-white/50">{body}</p>
+    </article>
   );
 }
 
@@ -357,15 +449,14 @@ function Skeleton({ className = "" }: { className?: string }) {
 
 function TimelineSkeleton() {
   return (
-    <ol className="grid gap-5 sm:grid-cols-[repeat(auto-fit,minmax(180px,1fr))]" aria-label="Memuat timeline">
+    <ol className="grid gap-4 lg:grid-cols-[repeat(auto-fit,minmax(190px,1fr))]" aria-label="Memuat timeline">
       {Array.from({ length: 4 }).map((_, index) => (
-        <li key={index} className="relative min-w-0 border-l border-dark/10 pb-1 pl-5 sm:border-l-0 sm:border-t sm:pb-0 sm:pl-0 sm:pt-5">
-          <span className="absolute -left-[7px] top-1 h-3.5 w-3.5 rounded-full bg-primary/40 ring-4 ring-white sm:-top-[7px] sm:left-0" />
-          <Skeleton className="h-3 w-20" />
-          <Skeleton className="mt-3 h-3 w-28" />
-          <Skeleton className="mt-4 h-5 w-36" />
-          <Skeleton className="mt-3 h-3 w-full" />
-          <Skeleton className="mt-2 h-3 w-4/5" />
+        <li key={index} className="border border-white/10 bg-white/[0.035] p-4">
+          <Skeleton className="h-3 w-24 skeleton-dark" />
+          <Skeleton className="mt-5 h-3 w-28 skeleton-dark" />
+          <Skeleton className="mt-4 h-5 w-36 skeleton-dark" />
+          <Skeleton className="mt-3 h-3 w-full skeleton-dark" />
+          <Skeleton className="mt-2 h-3 w-4/5 skeleton-dark" />
         </li>
       ))}
     </ol>
@@ -376,17 +467,17 @@ function CategorySkeleton() {
   return (
     <>
       {Array.from({ length: 2 }).map((_, index) => (
-        <article key={index} className="rounded-lg border border-dark/10 bg-light p-6 shadow-soft">
+        <article key={index} className="border border-white/10 bg-white/[0.04] p-6">
           <div className="flex items-center gap-3">
-            <Skeleton className="h-8 w-8 rounded-md" />
-            <Skeleton className="h-7 w-40" />
+            <Skeleton className="h-8 w-8 rounded-md skeleton-dark" />
+            <Skeleton className="h-7 w-40 skeleton-dark" />
           </div>
-          <Skeleton className="mt-5 h-3 w-full" />
-          <Skeleton className="mt-2 h-3 w-5/6" />
+          <Skeleton className="mt-5 h-3 w-full skeleton-dark" />
+          <Skeleton className="mt-2 h-3 w-5/6 skeleton-dark" />
           <div className="mt-6 space-y-3">
-            <Skeleton className="h-3 w-4/5" />
-            <Skeleton className="h-3 w-3/4" />
-            <Skeleton className="h-3 w-2/3" />
+            <Skeleton className="h-3 w-4/5 skeleton-dark" />
+            <Skeleton className="h-3 w-3/4 skeleton-dark" />
+            <Skeleton className="h-3 w-2/3 skeleton-dark" />
           </div>
         </article>
       ))}
@@ -398,12 +489,12 @@ function AnnouncementSkeleton() {
   return (
     <>
       {Array.from({ length: 3 }).map((_, index) => (
-        <article key={index} className="rounded-lg bg-white p-5 text-dark">
-          <Skeleton className="h-10 w-10 rounded-md" />
-          <Skeleton className="mt-5 h-5 w-28" />
-          <Skeleton className="mt-3 h-3 w-full" />
-          <Skeleton className="mt-2 h-3 w-4/5" />
-          <Skeleton className="mt-5 h-3 w-24" />
+        <article key={index} className="border border-white/10 bg-white/[0.045] p-5">
+          <Skeleton className="h-12 w-12 skeleton-dark" />
+          <Skeleton className="mt-5 h-5 w-28 skeleton-dark" />
+          <Skeleton className="mt-3 h-3 w-full skeleton-dark" />
+          <Skeleton className="mt-2 h-3 w-4/5 skeleton-dark" />
+          <Skeleton className="mt-5 h-3 w-24 skeleton-dark" />
         </article>
       ))}
     </>
@@ -414,14 +505,28 @@ function FAQSkeleton() {
   return (
     <>
       {Array.from({ length: 3 }).map((_, index) => (
-        <article key={index} className="rounded-lg border border-dark/10 bg-light p-4">
-          <Skeleton className="h-4 w-1/2" />
-          <Skeleton className="mt-3 h-3 w-full" />
-          <Skeleton className="mt-2 h-3 w-4/5" />
+        <article key={index} className="border border-white/10 bg-white/[0.04] p-4">
+          <Skeleton className="h-4 w-1/2 skeleton-dark" />
+          <Skeleton className="mt-3 h-3 w-full skeleton-dark" />
+          <Skeleton className="mt-2 h-3 w-4/5 skeleton-dark" />
         </article>
       ))}
     </>
   );
+}
+
+function formatRange(startDate: string, endDate: string) {
+  if (!startDate && !endDate) return "Tanggal menyusul";
+  if (!startDate || !endDate) return startDate || endDate;
+  return `${startDate} / ${endDate}`;
+}
+
+function splitHeroTitle(title: string): [string, string] {
+  const words = title.replace(/\s+/g, " ").trim().toUpperCase().split(" ");
+  if (words.length <= 1) return [words[0] || "POINT", "PROJECT"];
+  if (words[0] === "POINT" && words[1] === "PROJECT") return ["POINT", words.slice(1).join(" ")];
+  const midpoint = Math.max(1, Math.ceil(words.length / 2));
+  return [words.slice(0, midpoint).join(" "), words.slice(midpoint).join(" ") || "ARENA"];
 }
 
 function isTeamRuleFAQ(faq: FAQ) {

@@ -79,23 +79,23 @@ export function AnnouncementsPage() {
   }, [announcements, query]);
 
   return (
-    <section className="bg-white scroll-pop" data-scroll-pop>
-      <div className="border-b border-dark/10 bg-light [background-image:linear-gradient(rgba(0,111,174,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(0,111,174,0.08)_1px,transparent_1px)] [background-size:24px_24px]">
+    <section className="light-page announcements-light-page scroll-pop" data-scroll-pop>
+      <div className="tech-grid tech-noise relative border-b border-white/10 bg-[#080d16]">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-end">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.24em] text-primary">Point Project Arsip</p>
-              <h1 className="mt-4 text-4xl font-black leading-tight sm:text-5xl">
-                Latest <span className="text-primary">Updates</span>
+              <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-200">Point Project Arsip</p>
+              <h1 className="mt-4 text-4xl font-black uppercase leading-tight sm:text-6xl">
+                Latest <span className="text-cyan-200">Updates</span>
               </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-dark/65">
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-white/58">
                 Informasi resmi seputar finalis, pemenang, dan kabar penting {selectedEvent?.name ?? "Point Project"}.
               </p>
             </div>
             <div className="relative">
-              <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-dark/35" size={18} />
+              <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-cyan-200/60" size={18} />
               <input
-                className="field h-12 rounded-full !pl-12 !pr-4"
+                className="field h-12 rounded-sm border-white/12 bg-white/8 !pl-12 !pr-4 text-white placeholder:text-white/35 focus:border-cyan-300"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Cari berita atau artikel..."
@@ -103,9 +103,9 @@ export function AnnouncementsPage() {
             </div>
           </div>
 
-          <div className="relative z-40 mt-8 grid gap-3 overflow-visible rounded-lg border border-dark/10 bg-white p-4 shadow-soft sm:grid-cols-[1fr_1fr_auto] scroll-pop" data-scroll-pop>
+          <div className="relative z-40 mt-8 grid gap-3 overflow-visible border border-white/10 bg-[#05070d]/78 p-4 shadow-soft backdrop-blur sm:grid-cols-[1fr_1fr_auto] scroll-pop" data-scroll-pop>
             <div>
-              <label className="label" htmlFor="year-filter">
+              <label className="label text-white/72" htmlFor="year-filter">
                 Tahun
               </label>
               <CustomSelect
@@ -122,7 +122,7 @@ export function AnnouncementsPage() {
               />
             </div>
             <div>
-              <label className="label" htmlFor="type-filter">
+              <label className="label text-white/72" htmlFor="type-filter">
                 Jenis
               </label>
               <CustomSelect
@@ -137,7 +137,7 @@ export function AnnouncementsPage() {
                 ]}
               />
             </div>
-            <span className="inline-flex items-center justify-center gap-2 rounded-md bg-light px-4 py-3 text-sm font-black text-dark/70 sm:self-end">
+            <span className="inline-flex items-center justify-center gap-2 rounded-sm border border-cyan-300/20 bg-cyan-300/8 px-4 py-3 text-sm font-black text-cyan-100 sm:self-end">
               <Filter size={17} />
               {visibleAnnouncements.length} berita
             </span>
@@ -157,9 +157,9 @@ export function AnnouncementsPage() {
         </div>
 
         {!visibleAnnouncements.length ? (
-          <article className="mt-10 rounded-lg border border-dark/10 bg-white p-8 text-center shadow-soft">
+          <article className="mt-10 border border-white/10 bg-white/[0.045] p-8 text-center shadow-soft">
             <p className="font-black">Belum ada pengumuman untuk filter ini.</p>
-            <p className="mt-2 text-sm text-dark/60">Coba ubah kata kunci, tahun, atau jenis pengumuman.</p>
+            <p className="mt-2 text-sm text-white/55">Coba ubah kata kunci, tahun, atau jenis pengumuman.</p>
           </article>
         ) : null}
       </div>
@@ -177,7 +177,7 @@ function NewsCard({ announcement }: { announcement: Announcement }) {
   return (
     <article
       id={`announcement-${announcement.id}`}
-      className="overflow-hidden rounded-lg border border-dark/10 bg-white shadow-soft surface-hover scroll-pop"
+      className="overflow-hidden border border-white/10 bg-white/[0.045] shadow-soft transition hover:border-cyan-300/35 hover:bg-white/[0.065] scroll-pop"
       data-scroll-pop
     >
       <div className="relative h-44 overflow-hidden bg-dark">
@@ -192,7 +192,7 @@ function NewsCard({ announcement }: { announcement: Announcement }) {
           </div>
         )}
         <div className="absolute inset-0 bg-dark/25" />
-        <div className="absolute right-4 top-4 rounded-md bg-white px-3 py-2 text-center shadow-soft">
+        <div className="absolute right-4 top-4 bg-white px-3 py-2 text-center shadow-soft">
           <p className="text-sm font-black text-dark">{formatDay(announcement.publishedAt)}</p>
           <p className="text-[10px] font-black uppercase text-primary">{formatMonthYear(announcement.publishedAt)}</p>
         </div>
@@ -202,7 +202,7 @@ function NewsCard({ announcement }: { announcement: Announcement }) {
       </div>
       <div className="p-5">
         <h2 className="line-clamp-2 text-lg font-black leading-snug">{announcement.title}</h2>
-        <p className="mt-4 line-clamp-3 text-sm leading-6 text-dark/62">{announcement.body}</p>
+        <p className="mt-4 line-clamp-3 text-sm leading-6 text-white/58">{announcement.body}</p>
 
         {shownResults.length ? (
           <div className="mt-4 flex flex-wrap gap-2">
@@ -211,13 +211,13 @@ function NewsCard({ announcement }: { announcement: Announcement }) {
                 <Link
                   key={`${announcement.id}-${result.teamName}`}
                   to={winnerPath(announcement.eventId, result.teamName)}
-                  className="rounded-md bg-light px-2.5 py-1 text-xs font-black text-primary hover:bg-primary hover:text-white"
+                  className="bg-cyan-300/10 px-2.5 py-1 text-xs font-black text-cyan-100 hover:bg-cyan-300 hover:text-[#05070d]"
                 >
                   {result.rank ? `#${result.rank} ` : ""}
                   {result.teamName}
                 </Link>
               ) : (
-                <span key={`${announcement.id}-${result.teamName}`} className="rounded-md bg-light px-2.5 py-1 text-xs font-black text-primary">
+                <span key={`${announcement.id}-${result.teamName}`} className="bg-cyan-300/10 px-2.5 py-1 text-xs font-black text-cyan-100">
                   {result.teamName}
                 </span>
               )
@@ -225,12 +225,12 @@ function NewsCard({ announcement }: { announcement: Announcement }) {
           </div>
         ) : null}
 
-        <Link to={target} className="mt-5 inline-flex items-center gap-2 text-xs font-black uppercase text-primary hover:text-dark">
+        <Link to={target} className="mt-5 inline-flex items-center gap-2 text-xs font-black uppercase text-cyan-200 hover:text-white">
           Baca Selengkapnya
           <ArrowRight size={14} />
         </Link>
         {announcement.sourceUrl ? (
-          <a href={announcement.sourceUrl} target="_blank" rel="noreferrer" className="ml-4 mt-5 inline-flex items-center gap-2 text-xs font-black uppercase text-dark/45 hover:text-primary">
+          <a href={announcement.sourceUrl} target="_blank" rel="noreferrer" className="ml-4 mt-5 inline-flex items-center gap-2 text-xs font-black uppercase text-white/35 hover:text-cyan-200">
             Buka Instagram
           </a>
         ) : null}

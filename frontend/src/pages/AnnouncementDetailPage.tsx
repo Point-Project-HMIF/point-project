@@ -37,7 +37,7 @@ export function AnnouncementDetailPage() {
   );
 
   return (
-    <section className="py-14 scroll-pop" data-scroll-pop>
+    <section className="experience-page py-14 scroll-pop" data-scroll-pop>
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <Link to="/pengumuman" className="inline-flex items-center gap-2 text-sm font-black text-primary">
           <ArrowLeft size={17} />
