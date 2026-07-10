@@ -10,6 +10,7 @@ import (
 	"log"
 	"math/big"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -29,6 +30,7 @@ import (
 	"github.com/resend/resend-go/v3"
 	"golang.org/x/crypto/bcrypt"
 
+	"pointproject/backend/internal/instagram"
 	"pointproject/backend/internal/models"
 	"pointproject/backend/internal/repository"
 )
@@ -38,6 +40,7 @@ type Server struct {
 	jwtSecret []byte
 	mailer    registrationMailer
 	files     submissionFileStorage
+	instagram *instagram.Syncer
 }
 
 type registrationMailer interface {
@@ -51,6 +54,7 @@ type resendRegistrationMailer struct {
 
 type submissionFileStorage interface {
 	UploadSubmissionFile(ctx context.Context, team models.Team, stage, field string, header *multipart.FileHeader) (string, error)
+	UploadAnnouncementImage(ctx context.Context, header *multipart.FileHeader) (string, error)
 	DownloadSubmissionFile(ctx context.Context, key string) (submissionFileDownload, error)
 }
 
@@ -152,6 +156,43 @@ func (s *r2SubmissionFileStorage) UploadSubmissionFile(ctx context.Context, team
 	return "/api/files/r2/" + key, nil
 }
 
+func (s *r2SubmissionFileStorage) UploadAnnouncementImage(ctx context.Context, header *multipart.FileHeader) (string, error) {
+	if header == nil {
+		return "", nil
+	}
+	file, err := header.Open()
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	ext := cleanFileExt(header.Filename)
+	base := slugifyPathPart(strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename)))
+	if base == "" {
+		base = "pengumuman"
+	}
+	key := fmt.Sprintf("announcements/%d-%s%s", time.Now().UnixNano(), base, ext)
+	if s.objectPrefix != "" {
+		key = s.objectPrefix + "/" + key
+	}
+	contentType := header.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	if _, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(s.bucket),
+		Key:         aws.String(key),
+		Body:        file,
+		ContentType: aws.String(contentType),
+	}); err != nil {
+		return "", err
+	}
+	if s.publicBaseURL != "" {
+		return s.publicBaseURL + "/" + key, nil
+	}
+	return "/api/files/r2/" + key, nil
+}
+
 func (s *r2SubmissionFileStorage) DownloadSubmissionFile(ctx context.Context, key string) (submissionFileDownload, error) {
 	key = strings.Trim(strings.TrimSpace(key), "/")
 	if key == "" || strings.Contains(key, "..") {
@@ -230,26 +271,63 @@ func (m *resendRegistrationMailer) SendRegistrationOTP(ctx context.Context, to, 
 	if name == "" {
 		name = "Peserta"
 	}
-	escapedName := html.EscapeString(name)
 	escapedCode := html.EscapeString(code)
 	params := &resend.SendEmailRequest{
 		From:    m.from,
 		To:      []string{to},
 		Subject: "Kode OTP Pendaftaran Point Project",
 		Text: fmt.Sprintf(
-			"Halo %s,\n\nKode OTP pendaftaran Point Project kamu adalah %s. Kode ini berlaku 10 menit dan hanya bisa digunakan sekali.\n\nJika kamu tidak meminta kode ini, abaikan email ini.",
+			"Halo %s,\n\nKode verifikasi kamu adalah %s. Kode ini berlaku selama 10 menit dan hanya bisa digunakan sekali.\n\nJangan bagikan kode ini kepada siapa pun. Jika kamu tidak meminta kode ini, abaikan email ini.",
 			name,
 			code,
 		),
 		Html: fmt.Sprintf(`
-			<div style="font-family:Arial,sans-serif;line-height:1.6;color:#101827">
-				<p>Halo <strong>%s</strong>,</p>
-				<p>Kode OTP pendaftaran Point Project kamu:</p>
-				<p style="font-size:28px;font-weight:800;letter-spacing:6px;margin:18px 0">%s</p>
-				<p>Kode ini berlaku 10 menit dan hanya bisa digunakan sekali.</p>
-				<p style="color:#6b7280;font-size:13px">Jika kamu tidak meminta kode ini, abaikan email ini.</p>
-			</div>
-		`, escapedName, escapedCode),
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  </head>
+  <body style="margin:0; padding:0; background-color:#f4f4f5; font-family: Arial, Helvetica, sans-serif;">
+    <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5; padding:40px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden;">
+            <tr>
+              <td style="background-color:#111827; padding:24px 32px;">
+                <span style="color:#ffffff; font-size:18px; font-weight:bold;">Point Project</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:40px 32px; text-align:center;">
+                <h1 style="margin:0 0 12px 0; font-size:20px; color:#111827;">Kode Verifikasi Kamu</h1>
+                <p style="margin:0 0 32px 0; font-size:14px; line-height:1.6; color:#6b7280;">
+                  Gunakan kode di bawah ini untuk verifikasi akun. Kode berlaku selama 10 menit.
+                </p>
+                <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 32px auto;">
+                  <tr>
+                    <td style="background-color:#f4f4f5; border-radius:8px; padding:16px 32px;">
+                      <span style="font-size:32px; font-weight:bold; letter-spacing:8px; color:#111827;">%s</span>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:0; font-size:13px; line-height:1.5; color:#9ca3af;">
+                  Jangan bagikan kode ini kepada siapa pun, termasuk pihak yang mengaku dari tim kami. Jika kamu tidak meminta kode ini, abaikan email ini.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="background-color:#f9fafb; padding:20px 32px; text-align:center;">
+                <p style="margin:0; font-size:12px; color:#9ca3af;">&copy; Point Project</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+		`, escapedCode),
 	}
 	_, err := m.client.Emails.SendWithContext(ctx, params)
 	return err
@@ -267,6 +345,7 @@ func NewRouter(
 	r2SecretAccessKey,
 	r2PublicBaseURL,
 	r2ObjectPrefix string,
+	instagramSyncer *instagram.Syncer,
 ) http.Handler {
 	if len(allowedOrigins) == 0 {
 		allowedOrigins = []string{"http://localhost:5173"}
@@ -277,7 +356,9 @@ func NewRouter(
 		jwtSecret: []byte(jwtSecret),
 		mailer:    newRegistrationMailer(resendAPIKey, resendFrom),
 		files:     newSubmissionFileStorage(r2Endpoint, r2Bucket, r2AccessKeyID, r2SecretAccessKey, r2PublicBaseURL, r2ObjectPrefix),
+		instagram: instagramSyncer,
 	}
+	server.startInstagramAutoSync()
 
 	r := chi.NewRouter()
 	r.Use(server.recoverPanic)
@@ -329,7 +410,9 @@ func NewRouter(
 			r.Post("/admin/faqs", server.createFAQ)
 			r.Put("/admin/faqs/{faqID}", server.updateFAQ)
 			r.Delete("/admin/faqs/{faqID}", server.deleteFAQ)
+			r.Post("/admin/announcements/image", server.uploadAnnouncementImage)
 			r.Post("/admin/announcements", server.createAnnouncement)
+			r.Post("/admin/instagram/sync", server.syncInstagramAnnouncements)
 			r.Get("/admin/users", server.listAdminUsers)
 			r.Post("/admin/users", server.createAdminUser)
 		})
@@ -366,6 +449,43 @@ func (s *Server) activeEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, event)
+}
+
+func (s *Server) startInstagramAutoSync() {
+	if s.instagram == nil || !s.instagram.Configured() || s.instagram.Interval() <= 0 {
+		return
+	}
+	go func() {
+		timer := time.NewTimer(8 * time.Second)
+		defer timer.Stop()
+		for {
+			<-timer.C
+			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+			result, err := s.instagram.Sync(ctx)
+			cancel()
+			if err != nil {
+				log.Printf("instagram sync failed: %v", err)
+			} else {
+				log.Printf("instagram sync complete: fetched=%d saved=%d skipped=%d", result.Fetched, result.Saved, result.Skipped)
+			}
+			timer.Reset(s.instagram.Interval())
+		}
+	}()
+}
+
+func (s *Server) syncInstagramAnnouncements(w http.ResponseWriter, r *http.Request) {
+	if s.instagram == nil || !s.instagram.Configured() {
+		writeMessage(w, http.StatusServiceUnavailable, "sinkronisasi Instagram belum dikonfigurasi")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	result, err := s.instagram.Sync(ctx)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeData(w, http.StatusOK, result)
 }
 
 func (s *Server) listCategories(w http.ResponseWriter, r *http.Request) {
@@ -437,12 +557,33 @@ func (s *Server) requestRegistrationOTP(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	eventID := strings.TrimSpace(input.EventID)
+	if eventID == "" {
+		event, err := s.store.ActiveEvent(r.Context())
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		eventID = event.ID
+	} else if _, err := s.store.GetEvent(r.Context(), eventID); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	exists, err := s.store.ParticipantEmailExists(r.Context(), eventID, email)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if exists {
+		writeMessage(w, http.StatusConflict, "email ini sudah terdaftar sebagai peserta pada event ini")
+		return
+	}
 	code, err := generateOTPCode()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	if err := s.store.CreateRegistrationOTP(r.Context(), email, code); err != nil {
+	if err := s.store.CreateRegistrationOTP(r.Context(), email, code, clientIP(r), r.UserAgent()); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -894,6 +1035,37 @@ func (s *Server) createAnnouncement(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusCreated, announcement)
 }
 
+func (s *Server) uploadAnnouncementImage(w http.ResponseWriter, r *http.Request) {
+	if s.files == nil {
+		writeMessage(w, http.StatusServiceUnavailable, "penyimpanan file R2 belum dikonfigurasi")
+		return
+	}
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		writeMessage(w, http.StatusBadRequest, "file gambar wajib diunggah")
+		return
+	}
+	_ = file.Close()
+	if header.Size > 6<<20 {
+		writeMessage(w, http.StatusBadRequest, "ukuran gambar maksimal 6MB")
+		return
+	}
+	if contentType := header.Header.Get("Content-Type"); contentType != "" && !strings.HasPrefix(contentType, "image/") {
+		writeMessage(w, http.StatusBadRequest, "file harus berupa gambar")
+		return
+	}
+	url, err := s.files.UploadAnnouncementImage(r.Context(), header)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeData(w, http.StatusCreated, map[string]string{"url": url})
+}
+
 func (s *Server) listAdminUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := s.store.ListAdminUsers(r.Context())
 	if err != nil {
@@ -965,6 +1137,31 @@ func normalizeEmail(value string) (string, error) {
 		return "", fmt.Errorf("format email tidak valid")
 	}
 	return email, nil
+}
+
+func clientIP(r *http.Request) string {
+	for _, header := range []string{"CF-Connecting-IP", "X-Real-IP", "X-Forwarded-For"} {
+		value := strings.TrimSpace(r.Header.Get(header))
+		if value == "" {
+			continue
+		}
+		if header == "X-Forwarded-For" {
+			value = strings.TrimSpace(strings.Split(value, ",")[0])
+		}
+		if ip := net.ParseIP(value); ip != nil {
+			return ip.String()
+		}
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil {
+		if ip := net.ParseIP(host); ip != nil {
+			return ip.String()
+		}
+	}
+	if ip := net.ParseIP(strings.TrimSpace(r.RemoteAddr)); ip != nil {
+		return ip.String()
+	}
+	return ""
 }
 
 func generateOTPCode() (string, error) {

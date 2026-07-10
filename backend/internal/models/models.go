@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 type Event struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -152,6 +154,7 @@ type RegistrationRequest struct {
 }
 
 type RegistrationOTPRequest struct {
+	EventID     string `json:"eventId"`
 	LeaderName  string `json:"leaderName"`
 	LeaderEmail string `json:"leaderEmail"`
 }
@@ -192,6 +195,10 @@ type AnnouncementResult struct {
 	PrototypeURL string `json:"prototypeUrl"`
 	Reason       string `json:"reason"`
 	PreviewURL   string `json:"previewUrl"`
+	PPTURL       string `json:"pptUrl"`
+	PosterURL    string `json:"posterUrl"`
+	ProposalURL  string `json:"proposalUrl"`
+	ReportURL    string `json:"reportUrl"`
 }
 
 type Announcement struct {
@@ -201,7 +208,29 @@ type Announcement struct {
 	Title       string               `json:"title"`
 	Body        string               `json:"body"`
 	PublishedAt string               `json:"publishedAt"`
+	Source      string               `json:"source"`
+	SourceID    string               `json:"sourceId"`
+	SourceURL   string               `json:"sourceUrl"`
+	ImageURL    string               `json:"imageUrl"`
+	MediaType   string               `json:"mediaType"`
 	Results     []AnnouncementResult `json:"results"`
+}
+
+type InstagramAnnouncementInput struct {
+	EventID     string
+	SourceID    string
+	SourceURL   string
+	ImageURL    string
+	MediaType   string
+	Title       string
+	Body        string
+	PublishedAt time.Time
+}
+
+type InstagramSyncResult struct {
+	Fetched int `json:"fetched"`
+	Saved   int `json:"saved"`
+	Skipped int `json:"skipped"`
 }
 
 type Dashboard struct {
@@ -272,11 +301,12 @@ type CreateEventRequest struct {
 }
 
 type CreateAnnouncementRequest struct {
-	EventID string               `json:"eventId"`
-	Type    string               `json:"type"`
-	Title   string               `json:"title"`
-	Body    string               `json:"body"`
-	Results []AnnouncementResult `json:"results"`
+	EventID  string               `json:"eventId"`
+	Type     string               `json:"type"`
+	Title    string               `json:"title"`
+	Body     string               `json:"body"`
+	ImageURL string               `json:"imageUrl"`
+	Results  []AnnouncementResult `json:"results"`
 }
 
 type VerifyTeamRequest struct {

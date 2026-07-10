@@ -118,6 +118,10 @@ export function RegistrationPage() {
       if (invalidMember) {
         return "Setiap slot anggota yang diisi wajib lengkap: nama, email, dan peran.";
       }
+      const duplicateEmail = findDuplicateParticipantEmail();
+      if (duplicateEmail) {
+        return `Email peserta tidak boleh duplikat: ${duplicateEmail}.`;
+      }
     }
     if (stepIndex === 2 && (!form.categoryId || !form.batch)) {
       return "Batch dan kategori lomba wajib dipilih.";
@@ -169,6 +173,7 @@ export function RegistrationPage() {
     setOtpSending(true);
     try {
       const response = await api.requestRegistrationOTP({
+        eventId: form.eventId,
         leaderName: form.leaderName,
         leaderEmail: form.leaderEmail
       });
@@ -201,6 +206,11 @@ export function RegistrationPage() {
       showError(`Jumlah peserta harus ${rules.minTeamMembers}-${rules.maxTeamMembers} orang termasuk ketua.`);
       return;
     }
+    const duplicateEmail = findDuplicateParticipantEmail();
+    if (duplicateEmail) {
+      showError(`Email peserta tidak boleh duplikat: ${duplicateEmail}.`);
+      return;
+    }
     setLoading(true);
     try {
       const team = await api.register({
@@ -219,17 +229,29 @@ export function RegistrationPage() {
     }
   }
 
+  function findDuplicateParticipantEmail() {
+    const emails = [form.leaderEmail, ...members.map((member) => member.email)]
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+    const seen = new Set<string>();
+    for (const email of emails) {
+      if (seen.has(email)) return email;
+      seen.add(email);
+    }
+    return "";
+  }
+
   if (createdTeam) {
     return (
-      <section className="py-16">
+      <section className="py-16 scroll-pop" data-scroll-pop>
         <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-          <div className="rounded-lg border border-lagoon/20 bg-white p-8 text-center shadow-soft">
-            <span className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-lagoon text-white">
+          <div className="rounded-lg border border-primary/20 bg-white p-8 text-center shadow-soft scroll-pop" data-scroll-pop>
+            <span className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-primary text-white">
               <Check size={28} />
             </span>
             <h1 className="mt-6 text-3xl font-black">Pendaftaran terkirim</h1>
-            <p className="mt-3 text-ink/65">
-              ID tim kamu adalah <span className="font-black text-ink">{createdTeam.id}</span>. Simpan ID ini untuk
+            <p className="mt-3 text-dark/65">
+              ID tim kamu adalah <span className="font-black text-dark">{createdTeam.id}</span>. Simpan ID ini untuk
               membuka dashboard peserta.
             </p>
             <div className="mt-6 flex justify-center">
@@ -245,7 +267,7 @@ export function RegistrationPage() {
   }
 
   return (
-    <section className="py-14">
+    <section className="py-14 scroll-pop" data-scroll-pop>
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <SectionHeading
           eyebrow="Pendaftaran"
@@ -254,7 +276,7 @@ export function RegistrationPage() {
         />
 
         <div className="mt-10 grid gap-8 lg:grid-cols-[0.7fr_1.3fr]">
-          <aside className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+          <aside className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft scroll-pop" data-scroll-pop>
             <StatusPill tone="teal">Batch {form.batch}</StatusPill>
             <h2 className="mt-4 text-xl font-black">Progress Form</h2>
             <div className="mt-5 space-y-3">
@@ -269,16 +291,16 @@ export function RegistrationPage() {
                     aria-disabled={!accessible}
                     className={clsx(
                       "flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-bold transition",
-                      step === index && "bg-ink text-white",
-                      step !== index && accessible && "bg-cloud text-ink/70 hover:bg-lagoon/10",
-                      !accessible && "cursor-not-allowed bg-cloud text-ink/35"
+                      step === index && "bg-dark text-white",
+                      step !== index && accessible && "bg-light text-dark/70 hover:bg-primary/10",
+                      !accessible && "cursor-not-allowed bg-light text-dark/35"
                     )}
                   >
                     <span
                       className={clsx(
                         "grid h-7 w-7 shrink-0 place-items-center rounded-md text-xs",
-                        step === index ? "bg-mint text-ink" : "bg-white text-ink",
-                        !accessible && "text-ink/35"
+                        step === index ? "bg-teal text-dark" : "bg-white text-dark",
+                        !accessible && "text-dark/35"
                       )}
                     >
                       {accessible ? index + 1 : <Lock size={14} />}
@@ -290,7 +312,7 @@ export function RegistrationPage() {
             </div>
           </aside>
 
-          <form onSubmit={submit} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft sm:p-7">
+          <form onSubmit={submit} className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft sm:p-7 scroll-pop" data-scroll-pop>
             {step === 0 ? (
               <div className="grid gap-5 md:grid-cols-2">
                 <div className="md:col-span-2">
@@ -343,7 +365,7 @@ export function RegistrationPage() {
                     placeholder="08xxxxxxxxxx atau +628xxxxxxxxxx"
                   />
                   {form.leaderPhone && !isValidWhatsAppNumber(form.leaderPhone) ? (
-                    <p className="mt-2 text-xs font-bold text-coral">Gunakan nomor Indonesia, contoh 081234567890.</p>
+                    <p className="mt-2 text-xs font-bold text-orange">Gunakan nomor Indonesia, contoh 081234567890.</p>
                   ) : null}
                 </div>
                 <div>
@@ -363,7 +385,7 @@ export function RegistrationPage() {
 
             {step === 1 ? (
               <div className="space-y-5">
-                <div className="rounded-lg border border-lagoon/20 bg-lagoon/5 p-4">
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <p className="text-sm font-black">Anggota 1 - Ketua</p>
                     <StatusPill tone="teal">Wajib</StatusPill>
@@ -375,7 +397,7 @@ export function RegistrationPage() {
                   </div>
                 </div>
                 {members.map((member, index) => (
-                  <div key={index} className="rounded-lg border border-ink/10 bg-cloud p-4">
+                  <div key={index} className="rounded-lg border border-dark/10 bg-light p-4">
                     <div className="mb-4 flex items-center justify-between gap-3">
                       <p className="text-sm font-black">Anggota {index + 2}</p>
                       <button
@@ -430,7 +452,7 @@ export function RegistrationPage() {
                   </div>
                 ))}
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm font-bold text-ink/60">
+                  <p className="text-sm font-bold text-dark/60">
                     Terisi {totalMembers} dari maksimal {rules.maxTeamMembers} peserta. Slot anggota {members.length}/{additionalMemberLimit}.
                   </p>
                   <button type="button" className="btn-secondary" disabled={!canAddMember} onClick={addMember}>
@@ -474,13 +496,13 @@ export function RegistrationPage() {
                     disabled={!categories.length}
                   />
                 </div>
-                <div className="rounded-lg border border-ink/10 bg-cloud p-5 md:col-span-2">
+                <div className="rounded-lg border border-dark/10 bg-light p-5 md:col-span-2">
                   <h3 className="font-black">{selectedCategory?.name}</h3>
-                  <p className="mt-2 text-sm text-ink/65">{selectedCategory?.description}</p>
+                  <p className="mt-2 text-sm text-dark/65">{selectedCategory?.description}</p>
                   <ul className="mt-4 grid gap-2">
                     {selectedCategory?.requirements.map((item) => (
-                      <li key={item} className="flex gap-2 text-sm text-ink/70">
-                        <Check className="mt-0.5 text-lagoon" size={16} />
+                      <li key={item} className="flex gap-2 text-sm text-dark/70">
+                        <Check className="mt-0.5 text-primary" size={16} />
                         {item}
                       </li>
                     ))}
@@ -491,11 +513,11 @@ export function RegistrationPage() {
 
             {step === 3 ? (
               <div className="grid gap-5">
-                <div className="rounded-lg border border-lagoon/20 bg-lagoon/5 p-4">
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h3 className="font-black">Verifikasi Email Ketua</h3>
-                      <p className="mt-1 text-sm leading-6 text-ink/65">
+                      <p className="mt-1 text-sm leading-6 text-dark/65">
                         Kode OTP akan dikirim ke {form.leaderEmail || "email ketua"} dan berlaku 10 menit.
                       </p>
                     </div>
@@ -521,7 +543,7 @@ export function RegistrationPage() {
               </div>
             ) : null}
 
-            <div className="mt-8 flex flex-col-reverse gap-3 border-t border-ink/10 pt-5 sm:flex-row sm:justify-between">
+            <div className="mt-8 flex flex-col-reverse gap-3 border-t border-dark/10 pt-5 sm:flex-row sm:justify-between">
               <button type="button" className="btn-secondary" disabled={step === 0} onClick={() => setStep((current) => current - 1)}>
                 <ChevronLeft size={18} />
                 Kembali
@@ -566,7 +588,7 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="label">{label}</p>
-      <p className="rounded-md border border-ink/10 bg-white px-3 py-2.5 text-sm font-bold text-ink/70">{value}</p>
+      <p className="rounded-md border border-dark/10 bg-white px-3 py-2.5 text-sm font-bold text-dark/70">{value}</p>
     </div>
   );
 }

@@ -3,7 +3,9 @@ package config
 import (
 	"bufio"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -20,6 +22,10 @@ type Config struct {
 	R2SecretAccessKey  string
 	R2PublicBaseURL    string
 	R2ObjectPrefix     string
+	EnsembleAPIKey     string
+	InstagramUserID    string
+	InstagramOldest    int64
+	InstagramSyncEvery time.Duration
 }
 
 func Load() Config {
@@ -40,6 +46,10 @@ func Load() Config {
 		R2SecretAccessKey:  os.Getenv("R2_SECRET_ACCESS_KEY"),
 		R2PublicBaseURL:    env("R2_PUBLIC_BASE_URL", "https://cdn.pointproject.web.id"),
 		R2ObjectPrefix:     env("R2_OBJECT_PREFIX", env("R2_FOLDER_PREFIX", "pp")),
+		EnsembleAPIKey:     os.Getenv("ENSEMBLE_API_KEY"),
+		InstagramUserID:    os.Getenv("INSTAGRAM_USER_ID"),
+		InstagramOldest:    envInt64("INSTAGRAM_OLDEST_TIMESTAMP", 1666262030),
+		InstagramSyncEvery: envDuration("INSTAGRAM_SYNC_INTERVAL", 30*time.Minute),
 	}
 }
 
@@ -48,6 +58,30 @@ func env(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func envInt64(key string, fallback int64) int64 {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func envDuration(key string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 func splitCSV(value string) []string {

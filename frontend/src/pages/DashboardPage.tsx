@@ -6,6 +6,7 @@ import { api, resolveFileURL } from "../lib/api";
 import { toastError, toastSuccess } from "../lib/toast";
 import type { ParticipantDashboard, Submission, SubmissionPayload } from "../lib/types";
 
+// field file yg bisa diupload peserta di tiap tahap submission
 const submissionFileFields: Array<{
   key: Exclude<keyof SubmissionPayload, "stage" | "prototypeUrl">;
   label: string;
@@ -33,7 +34,7 @@ export function DashboardPage() {
   });
 
   const verified = dashboard?.team.verificationStatus === "verified";
-  const statusTone = verified ? "teal" : dashboard?.team.verificationStatus === "rejected" ? "coral" : "amber";
+  const statusTone = verified ? "teal" : dashboard?.team.verificationStatus === "rejected" ? "orange" : "amber";
   const submissionStages = dashboard?.submissionStages ?? [];
   const selectedStage = submissionStages.find((item) => item.stage.key === submission.stage);
   const firstAllowedStage = submissionStages.find((item) => item.canSubmit);
@@ -82,7 +83,8 @@ export function DashboardPage() {
       showError("Muat dashboard tim terlebih dahulu.");
       return;
     }
-    const permission = dashboard.submissionStages.find((item) => item.stage.key === submission.stage);
+  // validasi permission sebelum submit — cek apakah tahap ini boleh diakses tim
+  const permission = dashboard.submissionStages.find((item) => item.stage.key === submission.stage);
     if (!permission?.canSubmit) {
       showError(permission?.reason || "Tahap upload ini belum tersedia untuk tim kamu.");
       return;
@@ -115,7 +117,7 @@ export function DashboardPage() {
   }
 
   return (
-    <section className="py-14">
+    <section className="py-14 scroll-pop" data-scroll-pop>
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeading
           eyebrow="Dashboard Peserta"
@@ -123,7 +125,7 @@ export function DashboardPage() {
           body="Peserta dapat melihat status verifikasi, submission yang sudah masuk, dan pengumuman yang relevan untuk tim."
         />
 
-        <div className="mt-10 rounded-lg border border-ink/10 bg-white p-4 shadow-soft">
+        <div className="mt-10 rounded-lg border border-dark/10 bg-white p-4 shadow-soft scroll-pop" data-scroll-pop>
           <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
             <input
               className="field"
@@ -140,58 +142,58 @@ export function DashboardPage() {
         </div>
 
         {!dashboard ? (
-          <article className="mt-8 rounded-lg border border-ink/10 bg-white p-8 text-center shadow-soft">
+          <article className="mt-8 rounded-lg border border-dark/10 bg-white p-8 text-center shadow-soft scroll-pop" data-scroll-pop>
             <p className="font-black">Dashboard belum dimuat.</p>
-            <p className="mt-2 text-sm text-ink/60">Masukkan ID tim dari hasil pendaftaran untuk melihat data.</p>
+            <p className="mt-2 text-sm text-dark/60">Masukkan ID tim dari hasil pendaftaran untuk melihat data.</p>
           </article>
         ) : (
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
           <div className="space-y-6">
-            <article className="card">
+            <article className="card scroll-pop" data-scroll-pop>
               <StatusPill tone={statusTone}>{dashboard.team.verificationStatus}</StatusPill>
               <h2 className="mt-4 text-2xl font-black">{dashboard.team.name}</h2>
-              <p className="mt-2 text-sm leading-6 text-ink/65">
+              <p className="mt-2 text-sm leading-6 text-dark/65">
                 {dashboard.category.name} - Batch {dashboard.team.batch} - {dashboard.team.institution}
               </p>
-              <div className="mt-5 grid gap-3 border-t border-ink/10 pt-5">
+              <div className="mt-5 grid gap-3 border-t border-dark/10 pt-5">
                 <p className="text-sm">
-                  <span className="font-bold text-ink/55">Ketua:</span> {dashboard.team.leaderName}
+                  <span className="font-bold text-dark/55">Ketua:</span> {dashboard.team.leaderName}
                 </p>
                 <p className="text-sm">
-                  <span className="font-bold text-ink/55">Email:</span> {dashboard.team.leaderEmail}
+                  <span className="font-bold text-dark/55">Email:</span> {dashboard.team.leaderEmail}
                 </p>
                 <p className="text-sm">
-                  <span className="font-bold text-ink/55">ID Tim:</span> {dashboard.team.id}
+                  <span className="font-bold text-dark/55">ID Tim:</span> {dashboard.team.id}
                 </p>
                 <p className="text-sm">
-                  <span className="font-bold text-ink/55">Jumlah Peserta:</span> {dashboard.team.members.length} orang termasuk ketua
+                  <span className="font-bold text-dark/55">Jumlah Peserta:</span> {dashboard.team.members.length} orang termasuk ketua
                 </p>
               </div>
             </article>
 
-            <article className="card">
+            <article className="card scroll-pop" data-scroll-pop>
               <div className="flex items-center gap-3">
-                {finalist ? <CheckCircle2 className="text-lagoon" /> : <ShieldAlert className="text-sun" />}
+                {finalist ? <CheckCircle2 className="text-primary" /> : <ShieldAlert className="text-yellow" />}
                 <h2 className="text-xl font-black">Status Finalis</h2>
               </div>
-              <p className="mt-3 text-sm leading-6 text-ink/65">
+              <p className="mt-3 text-sm leading-6 text-dark/65">
                 {finalist
                   ? "Tim kamu tercatat dalam daftar finalis/pemenang pada pengumuman publik."
                   : "Belum ada status finalis untuk tim ini. Pantau pengumuman setelah penilaian tahap awal."}
               </p>
             </article>
 
-            <article className="card">
+            <article className="card scroll-pop" data-scroll-pop>
               <div className="flex items-center gap-3">
-                <Bell className="text-coral" />
+                <Bell className="text-orange" />
                 <h2 className="text-xl font-black">Pengumuman</h2>
               </div>
               <div className="mt-4 space-y-4">
                 {dashboard.announcements.map((announcement) => (
-                  <div key={announcement.id} className="border-l-2 border-lagoon pl-4">
+                  <div key={announcement.id} className="border-l-2 border-primary pl-4">
                     <p className="text-sm font-black">{announcement.title}</p>
-                    <p className="mt-1 text-xs text-ink/55">{announcement.publishedAt}</p>
+                    <p className="mt-1 text-xs text-dark/55">{announcement.publishedAt}</p>
                   </div>
                 ))}
               </div>
@@ -199,14 +201,14 @@ export function DashboardPage() {
           </div>
 
           <div className="space-y-6">
-            <article className="card">
+            <article className="card scroll-pop" data-scroll-pop>
               <div className="flex items-center gap-3">
-                <FileUp className="text-lagoon" />
+                <FileUp className="text-primary" />
                 <h2 className="text-xl font-black">Riwayat Submission</h2>
               </div>
               <div className="mt-5 overflow-x-auto">
                 <table className="w-full min-w-[640px] text-left text-sm">
-                  <thead className="border-b border-ink/10 text-xs uppercase text-ink/45">
+                  <thead className="border-b border-dark/10 text-xs uppercase text-dark/45">
                     <tr>
                       <th className="py-3 pr-3">Tahap</th>
                       <th className="py-3 pr-3">Status</th>
@@ -214,7 +216,7 @@ export function DashboardPage() {
                       <th className="py-3 pr-3">Tanggal</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-ink/10">
+                  <tbody className="divide-y divide-dark/10">
                     {dashboard.submissions.map((item) => (
                       <tr key={item.id}>
                         <td className="py-3 pr-3 font-bold">{item.stage}</td>
@@ -230,9 +232,9 @@ export function DashboardPage() {
               </div>
             </article>
 
-            <form onSubmit={submitWork} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+            <form onSubmit={submitWork} className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft scroll-pop" data-scroll-pop>
               <div className="flex items-center gap-3">
-                <Send className="text-coral" />
+                <Send className="text-orange" />
                 <h2 className="text-xl font-black">Upload Karya</h2>
               </div>
               <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -253,7 +255,7 @@ export function DashboardPage() {
                     }))}
                     disabled={!submissionStages.length}
                   />
-                  {!submissionStages.length ? <p className="mt-2 text-xs font-bold text-coral">Belum ada tahap upload dari admin.</p> : null}
+                  {!submissionStages.length ? <p className="mt-2 text-xs font-bold text-orange">Belum ada tahap upload dari admin.</p> : null}
                 </div>
                 <div className="md:col-span-2">
                   <label className="label" htmlFor="prototype-url">
@@ -267,7 +269,7 @@ export function DashboardPage() {
                     onChange={(event) => setSubmission((current) => ({ ...current, prototypeUrl: event.target.value }))}
                     placeholder="https://www.figma.com/proto/..."
                   />
-                  <p className="mt-2 text-xs font-bold text-ink/45">Prototype cukup berupa link Figma, bukan file upload.</p>
+                  <p className="mt-2 text-xs font-bold text-dark/45">Prototype cukup berupa link Figma, bukan file upload.</p>
                 </div>
                 {submissionFileFields.map(({ key, label, accept }) => (
                   <div key={key}>
@@ -286,10 +288,10 @@ export function DashboardPage() {
                 ))}
               </div>
               {selectedStage && !selectedStage.canSubmit ? (
-                <p className="mt-4 rounded-md bg-sun/20 px-4 py-3 text-sm font-bold text-amber-900">{selectedStage.reason}</p>
+                <p className="mt-4 rounded-md bg-yellow/20 px-4 py-3 text-sm font-bold text-amber-900">{selectedStage.reason}</p>
               ) : null}
               {!firstAllowedStage && submissionStages.length ? (
-                <p className="mt-4 rounded-md bg-sun/20 px-4 py-3 text-sm font-bold text-amber-900">
+                <p className="mt-4 rounded-md bg-yellow/20 px-4 py-3 text-sm font-bold text-amber-900">
                   Belum ada tahap upload yang terbuka untuk tim kamu.
                 </p>
               ) : null}
@@ -341,14 +343,14 @@ function SubmissionLinks({ submission }: { submission: Submission }) {
     ["Poster", submission.posterUrl]
   ].filter(([, url]) => Boolean(url));
 
-  if (!links.length) return <span className="text-ink/45">-</span>;
+  if (!links.length) return <span className="text-dark/45">-</span>;
 
   return (
     <div className="flex flex-wrap gap-2">
       {links.map(([label, url]) => (
         <a
           key={label}
-          className="inline-flex items-center gap-1 rounded-md border border-ink/10 px-2 py-1 text-xs font-black text-lagoon hover:bg-lagoon hover:text-white"
+          className="inline-flex items-center gap-1 rounded-md border border-dark/10 px-2 py-1 text-xs font-black text-primary hover:bg-primary hover:text-white"
           href={resolveFileURL(url)}
           target="_blank"
           rel="noreferrer"

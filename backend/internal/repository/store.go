@@ -25,7 +25,9 @@ type Store interface {
 	UpdateFAQ(ctx context.Context, faqID string, input models.FAQInput) (models.FAQ, error)
 	DeleteFAQ(ctx context.Context, faqID string) error
 	ListAnnouncements(ctx context.Context, eventID, kind string) ([]models.Announcement, error)
-	CreateRegistrationOTP(ctx context.Context, email, code string) error
+	UpsertInstagramAnnouncements(ctx context.Context, items []models.InstagramAnnouncementInput) (int, error)
+	CreateRegistrationOTP(ctx context.Context, email, code, requestIP, userAgent string) error
+	ParticipantEmailExists(ctx context.Context, eventID, email string) (bool, error)
 	CreateTeam(ctx context.Context, input models.RegistrationRequest) (models.Team, error)
 	GetDashboard(ctx context.Context, teamID string) (models.Dashboard, error)
 	GetTeamDetail(ctx context.Context, teamID string) (models.TeamDetail, error)

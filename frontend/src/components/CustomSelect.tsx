@@ -9,6 +9,9 @@ export type CustomSelectOption = {
   disabled?: boolean;
 };
 
+// custom select dropdown biasa, pake click-outside buat nutup
+// sengaja manual biar stylingnya konsisten sama form lain
+// TODO: kalo udah butuh search + banyak opsi, pindah ke react-select aja
 export function CustomSelect({
   id,
   value,
@@ -62,13 +65,13 @@ export function CustomSelect({
   }, [disabled]);
 
   return (
-    <div ref={rootRef} className={clsx("relative", className)}>
+    <div ref={rootRef} className={clsx("relative", open && "z-[120]", className)}>
       <button
         id={buttonId}
         type="button"
         className={clsx(
           "field flex min-h-[42px] items-center justify-between gap-3 text-left",
-          disabled && "cursor-not-allowed bg-cloud text-ink/45 opacity-80"
+          disabled && "cursor-not-allowed bg-light text-dark/45 opacity-80"
         )}
         onClick={() => {
           if (!disabled && hasEnabledOptions) setOpen((current) => !current);
@@ -78,10 +81,10 @@ export function CustomSelect({
         aria-expanded={open}
         aria-controls={listId}
       >
-        <span className={clsx("min-w-0 truncate", selected ? "text-ink" : "text-ink/45")}>
+        <span className={clsx("min-w-0 truncate", selected ? "text-dark" : "text-dark/45")}>
           {selected?.label ?? placeholder}
         </span>
-        <ChevronDown className={clsx("shrink-0 text-ink/45 transition", open && "rotate-180")} size={17} />
+        <ChevronDown className={clsx("shrink-0 text-dark/45 transition", open && "rotate-180")} size={17} />
       </button>
 
       {open ? (
@@ -89,7 +92,7 @@ export function CustomSelect({
           id={listId}
           role="listbox"
           aria-labelledby={buttonId}
-          className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-50 max-h-72 overflow-y-auto rounded-md border border-ink/10 bg-white p-1 shadow-soft"
+          className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-[130] max-h-72 overflow-y-auto rounded-md border border-dark/10 bg-white p-1 shadow-soft"
         >
           {options.map((option) => {
             const active = option.value === value;
@@ -102,8 +105,8 @@ export function CustomSelect({
                 disabled={option.disabled}
                 className={clsx(
                   "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left text-sm transition",
-                  active ? "bg-lagoon/10 text-lagoon" : "text-ink hover:bg-cloud",
-                  option.disabled && "cursor-not-allowed text-ink/35 hover:bg-white"
+                  active ? "bg-primary/10 text-primary" : "text-dark hover:bg-light",
+                  option.disabled && "cursor-not-allowed text-dark/35 hover:bg-white"
                 )}
                 onClick={() => {
                   if (option.disabled) return;
@@ -114,7 +117,7 @@ export function CustomSelect({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-black">{option.label}</span>
                   {option.description ? (
-                    <span className="mt-0.5 block break-words text-xs font-bold text-ink/45">{option.description}</span>
+                    <span className="mt-0.5 block break-words text-xs font-bold text-dark/45">{option.description}</span>
                   ) : null}
                 </span>
                 {active ? <Check className="mt-0.5 shrink-0" size={16} /> : null}

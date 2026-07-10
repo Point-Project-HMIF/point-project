@@ -34,6 +34,7 @@ type APIEnvelope<T> = {
 };
 
 async function request<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
+  // bikin headers sementara, set content-type kalo bukan FormData
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
@@ -59,6 +60,7 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string):
 }
 
 export function isNotFoundError(error: unknown) {
+  // helper: pembeda 404 sama error lain, dipake pas catch
   return error instanceof Error && /404|not found/i.test(error.message);
 }
 
@@ -70,6 +72,7 @@ function encodePath(value: string) {
     .join("/");
 }
 
+// fungsi untuk ubah URL file internal ke URL CDN publik
 export function resolveFileURL(value: string) {
   const url = value.trim();
   if (!url) return "";
@@ -170,6 +173,11 @@ export const api = {
   updateFaq: (token: string, faqId: string, payload: FAQPayload) =>
     request<FAQ>(`/admin/faqs/${faqId}`, { method: "PUT", body: JSON.stringify(payload) }, token),
   deleteFaq: (token: string, faqId: string) => request<{ message: string }>(`/admin/faqs/${faqId}`, { method: "DELETE" }, token),
+  uploadAnnouncementImage: (token: string, file: File) => {
+    const formData = new FormData();
+    formData.set("image", file);
+    return request<{ url: string }>("/admin/announcements/image", { method: "POST", body: formData }, token);
+  },
   createAnnouncement: (token: string, payload: Partial<Announcement>) =>
     request<Announcement>("/admin/announcements", { method: "POST", body: JSON.stringify(payload) }, token),
   adminUsers: (token: string) => request<AdminUser[]>("/admin/users", {}, token),

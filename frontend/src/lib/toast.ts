@@ -9,6 +9,7 @@ export type ToastPayload = {
 
 export const toastEventName = "pointproject:toast";
 
+// toast notification — dikirim lewat custom event biar gak perlu prop drilling
 export function notify(payload: ToastPayload) {
   if (typeof window === "undefined" || !payload.message.trim()) return;
   window.dispatchEvent(new CustomEvent<ToastPayload>(toastEventName, { detail: payload }));

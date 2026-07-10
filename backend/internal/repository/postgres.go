@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/mail"
 	"regexp"
 	"strings"
 	"time"
@@ -23,6 +24,10 @@ type PostgresStore struct {
 }
 
 var whatsappPattern = regexp.MustCompile(`^\+628[0-9]{8,11}$`)
+
+type queryRower interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
 
 func NewPostgresStore(db *pgxpool.Pool) *PostgresStore {
 	return &PostgresStore{db: db}
@@ -499,6 +504,9 @@ func (s *PostgresStore) ListAnnouncements(ctx context.Context, eventID, kind str
 	query := `
 		select id::text, event_id::text, type, title, body,
 		       to_char(published_at, 'YYYY-MM-DD'),
+		       coalesce(source, ''), coalesce(source_id, ''),
+		       coalesce(source_url, ''), coalesce(image_url, ''),
+		       coalesce(media_type, ''),
 		       results
 		from announcements
 		where event_id = $1
@@ -537,6 +545,11 @@ func scanAnnouncement(row interface{ Scan(dest ...any) error }) (models.Announce
 		&announcement.Title,
 		&announcement.Body,
 		&announcement.PublishedAt,
+		&announcement.Source,
+		&announcement.SourceID,
+		&announcement.SourceURL,
+		&announcement.ImageURL,
+		&announcement.MediaType,
 		&raw,
 	); err != nil {
 		return models.Announcement{}, err
@@ -550,9 +563,78 @@ func scanAnnouncement(row interface{ Scan(dest ...any) error }) (models.Announce
 	return announcement, nil
 }
 
-func (s *PostgresStore) CreateRegistrationOTP(ctx context.Context, email, code string) error {
+func (s *PostgresStore) UpsertInstagramAnnouncements(ctx context.Context, items []models.InstagramAnnouncementInput) (int, error) {
+	if len(items) == 0 {
+		return 0, nil
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	saved := 0
+	for _, item := range items {
+		item.EventID = strings.TrimSpace(item.EventID)
+		item.SourceID = strings.TrimSpace(item.SourceID)
+		item.SourceURL = strings.TrimSpace(item.SourceURL)
+		item.ImageURL = strings.TrimSpace(item.ImageURL)
+		item.MediaType = strings.TrimSpace(item.MediaType)
+		item.Title = strings.TrimSpace(item.Title)
+		item.Body = strings.TrimSpace(item.Body)
+		if item.EventID == "" || item.SourceID == "" || item.Title == "" || item.PublishedAt.IsZero() {
+			continue
+		}
+		if item.Body == "" {
+			item.Body = item.Title
+		}
+		commandTag, err := tx.Exec(ctx, `
+			insert into announcements (
+				event_id, type, title, body, results, published_at,
+				source, source_id, source_url, image_url, media_type, synced_at
+			)
+			values ($1, 'info', $2, $3, '[]'::jsonb, $4, 'instagram', $5, $6, $7, $8, now())
+			on conflict (source, source_id) where source_id <> ''
+			do update set
+				event_id = excluded.event_id,
+				title = excluded.title,
+				body = excluded.body,
+				published_at = excluded.published_at,
+				source_url = excluded.source_url,
+				image_url = excluded.image_url,
+				media_type = excluded.media_type,
+				synced_at = now()
+		`,
+			item.EventID,
+			item.Title,
+			item.Body,
+			item.PublishedAt,
+			item.SourceID,
+			item.SourceURL,
+			item.ImageURL,
+			item.MediaType,
+		)
+		if err != nil {
+			return saved, err
+		}
+		if commandTag.RowsAffected() > 0 {
+			saved++
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return saved, err
+	}
+	return saved, nil
+}
+
+func (s *PostgresStore) CreateRegistrationOTP(ctx context.Context, email, code, requestIP, userAgent string) error {
 	email = strings.ToLower(strings.TrimSpace(email))
 	code = strings.TrimSpace(code)
+	requestIP = strings.TrimSpace(requestIP)
+	userAgent = strings.TrimSpace(userAgent)
+	if len(userAgent) > 240 {
+		userAgent = userAgent[:240]
+	}
 	if email == "" || code == "" {
 		return errors.New("email dan kode OTP wajib diisi")
 	}
@@ -568,6 +650,53 @@ func (s *PostgresStore) CreateRegistrationOTP(ctx context.Context, email, code s
 	}
 	if recentRequests > 0 {
 		return errors.New("kode OTP baru bisa diminta lagi setelah 60 detik")
+	}
+	if err := s.db.QueryRow(ctx, `
+		select count(*)
+		from registration_otps
+		where lower(email) = lower($1)
+		  and created_at > now() - interval '10 minutes'
+	`, email).Scan(&recentRequests); err != nil {
+		return err
+	}
+	if recentRequests >= 3 {
+		return errors.New("terlalu banyak permintaan OTP untuk email ini, coba lagi beberapa menit lagi")
+	}
+	if err := s.db.QueryRow(ctx, `
+		select count(*)
+		from registration_otps
+		where lower(email) = lower($1)
+		  and created_at > now() - interval '24 hours'
+	`, email).Scan(&recentRequests); err != nil {
+		return err
+	}
+	if recentRequests >= 10 {
+		return errors.New("batas permintaan OTP harian untuk email ini sudah tercapai")
+	}
+	if requestIP != "" {
+		var ipRequests int
+		if err := s.db.QueryRow(ctx, `
+			select count(*)
+			from registration_otps
+			where request_ip = $1
+			  and created_at > now() - interval '60 seconds'
+		`, requestIP).Scan(&ipRequests); err != nil {
+			return err
+		}
+		if ipRequests >= 5 {
+			return errors.New("terlalu banyak permintaan OTP dari jaringan ini, coba lagi sebentar lagi")
+		}
+		if err := s.db.QueryRow(ctx, `
+			select count(*)
+			from registration_otps
+			where request_ip = $1
+			  and created_at > now() - interval '10 minutes'
+		`, requestIP).Scan(&ipRequests); err != nil {
+			return err
+		}
+		if ipRequests >= 20 {
+			return errors.New("aktivitas permintaan OTP terlalu tinggi dari jaringan ini")
+		}
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
@@ -590,13 +719,17 @@ func (s *PostgresStore) CreateRegistrationOTP(ctx context.Context, email, code s
 		return err
 	}
 	if _, err := tx.Exec(ctx, `
-		insert into registration_otps (email, code_hash, expires_at)
-		values ($1, $2, now() + interval '10 minutes')
-	`, email, string(hash)); err != nil {
+		insert into registration_otps (email, code_hash, expires_at, request_ip, user_agent)
+		values ($1, $2, now() + interval '10 minutes', $3, $4)
+	`, email, string(hash), requestIP, userAgent); err != nil {
 		return err
 	}
 	_, _ = tx.Exec(ctx, `delete from registration_otps where expires_at < now() - interval '1 day'`)
 	return tx.Commit(ctx)
+}
+
+func (s *PostgresStore) ParticipantEmailExists(ctx context.Context, eventID, email string) (bool, error) {
+	return participantEmailExists(ctx, s.db, eventID, email)
 }
 
 func (s *PostgresStore) CreateTeam(ctx context.Context, input models.RegistrationRequest) (models.Team, error) {
@@ -639,6 +772,9 @@ func (s *PostgresStore) CreateTeam(ctx context.Context, input models.Registratio
 		return models.Team{}, err
 	}
 	input.Members = normalizeTeamMembers(input)
+	if err := validateTeamMemberEmails(input.Members); err != nil {
+		return models.Team{}, err
+	}
 	memberCount := len(input.Members)
 	if memberCount < rules.MinTeamMembers || memberCount > rules.MaxTeamMembers {
 		return models.Team{}, fmt.Errorf(
@@ -662,6 +798,15 @@ func (s *PostgresStore) CreateTeam(ctx context.Context, input models.Registratio
 	}
 	defer tx.Rollback(ctx)
 
+	for _, member := range input.Members {
+		exists, err := participantEmailExists(ctx, tx, eventID, member.Email)
+		if err != nil {
+			return models.Team{}, err
+		}
+		if exists {
+			return models.Team{}, fmt.Errorf("email peserta %s sudah terdaftar pada event ini", member.Email)
+		}
+	}
 	if err := verifyRegistrationOTP(ctx, tx, input.LeaderEmail, input.OTPCode); err != nil {
 		return models.Team{}, err
 	}
@@ -857,7 +1002,7 @@ func cleanTeamMembers(members []models.TeamMember) []models.TeamMember {
 	cleaned := make([]models.TeamMember, 0, len(members))
 	for _, member := range members {
 		member.Name = strings.TrimSpace(member.Name)
-		member.Email = strings.TrimSpace(member.Email)
+		member.Email = strings.ToLower(strings.TrimSpace(member.Email))
 		member.Role = strings.TrimSpace(member.Role)
 		if member.Name == "" {
 			continue
@@ -891,6 +1036,49 @@ func sameTeamMember(a, b models.TeamMember) bool {
 		return strings.EqualFold(a.Email, b.Email)
 	}
 	return strings.EqualFold(strings.TrimSpace(a.Name), strings.TrimSpace(b.Name))
+}
+
+func validateTeamMemberEmails(members []models.TeamMember) error {
+	seen := map[string]bool{}
+	for _, member := range members {
+		email := strings.ToLower(strings.TrimSpace(member.Email))
+		if email == "" {
+			return errors.New("email semua peserta wajib diisi")
+		}
+		address, err := mail.ParseAddress(email)
+		if err != nil || strings.ToLower(address.Address) != email {
+			return fmt.Errorf("format email peserta tidak valid: %s", email)
+		}
+		if seen[email] {
+			return fmt.Errorf("email peserta tidak boleh duplikat: %s", email)
+		}
+		seen[email] = true
+	}
+	return nil
+}
+
+func participantEmailExists(ctx context.Context, q queryRower, eventID, email string) (bool, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if eventID == "" || email == "" {
+		return false, nil
+	}
+	var exists bool
+	err := q.QueryRow(ctx, `
+		select exists (
+			select 1
+			from teams t
+			where t.event_id = $1
+			  and (
+			    lower(t.leader_email) = lower($2)
+			    or exists (
+			      select 1
+			      from jsonb_array_elements(t.members) as member(value)
+			      where lower(coalesce(member.value->>'email', '')) = lower($2)
+			    )
+			  )
+		)
+	`, eventID, email).Scan(&exists)
+	return exists, err
 }
 
 func (s *PostgresStore) teamSubmissionStages(ctx context.Context, team models.Team) ([]models.TeamSubmissionStage, error) {
@@ -1621,10 +1809,13 @@ func (s *PostgresStore) CreateAnnouncement(ctx context.Context, input models.Cre
 		return models.Announcement{}, err
 	}
 	row := s.db.QueryRow(ctx, `
-		insert into announcements (event_id, type, title, body, results)
-		values ($1, $2, $3, $4, $5)
+		insert into announcements (event_id, type, title, body, results, image_url)
+		values ($1, $2, $3, $4, $5, $6)
 		returning id::text, event_id::text, type, title, body,
 		          to_char(published_at, 'YYYY-MM-DD'),
+		          coalesce(source, ''), coalesce(source_id, ''),
+		          coalesce(source_url, ''), coalesce(image_url, ''),
+		          coalesce(media_type, ''),
 		          results
 	`,
 		input.EventID,
@@ -1632,6 +1823,7 @@ func (s *PostgresStore) CreateAnnouncement(ctx context.Context, input models.Cre
 		strings.TrimSpace(input.Title),
 		strings.TrimSpace(input.Body),
 		results,
+		strings.TrimSpace(input.ImageURL),
 	)
 	return scanAnnouncement(row)
 }

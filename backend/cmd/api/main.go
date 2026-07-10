@@ -9,6 +9,7 @@ import (
 	"pointproject/backend/internal/config"
 	"pointproject/backend/internal/database"
 	"pointproject/backend/internal/httpapi"
+	"pointproject/backend/internal/instagram"
 	"pointproject/backend/internal/repository"
 )
 
@@ -28,6 +29,13 @@ func main() {
 	defer pool.Close()
 
 	var store repository.Store = repository.NewPostgresStore(pool)
+	instagramSyncer := instagram.NewSyncer(store, instagram.Config{
+		APIKey:          cfg.EnsembleAPIKey,
+		UserID:          cfg.InstagramUserID,
+		OldestTimestamp: cfg.InstagramOldest,
+		ChunkSize:       10,
+		SyncInterval:    cfg.InstagramSyncEvery,
+	})
 
 	handler := httpapi.NewRouter(
 		store,
@@ -41,6 +49,7 @@ func main() {
 		cfg.R2SecretAccessKey,
 		cfg.R2PublicBaseURL,
 		cfg.R2ObjectPrefix,
+		instagramSyncer,
 	)
 
 	log.Printf("Point Project API berjalan di %s", cfg.HTTPAddr)

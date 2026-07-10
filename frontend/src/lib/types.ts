@@ -135,6 +135,7 @@ export type RegistrationPayload = {
 };
 
 export type RegistrationOTPPayload = {
+  eventId: string;
   leaderName: string;
   leaderEmail: string;
 };
@@ -175,6 +176,10 @@ export type AnnouncementResult = {
   prototypeUrl: string;
   reason?: string;
   previewUrl?: string;
+  pptUrl?: string;
+  posterUrl?: string;
+  proposalUrl?: string;
+  reportUrl?: string;
 };
 
 export type Announcement = {
@@ -184,6 +189,11 @@ export type Announcement = {
   title: string;
   body: string;
   publishedAt: string;
+  source?: string;
+  sourceId?: string;
+  sourceUrl?: string;
+  imageUrl?: string;
+  mediaType?: string;
   results: AnnouncementResult[];
 };
 

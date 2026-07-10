@@ -6,6 +6,7 @@ import {
   ClipboardList,
   FileSpreadsheet,
   HelpCircle,
+  ImagePlus,
   LayoutGrid,
   Lock,
   LogIn,
@@ -154,6 +155,8 @@ export function AdminPanel() {
     teamId: "",
     reason: ""
   });
+  const [announcementImage, setAnnouncementImage] = useState<File | null>(null);
+  const [announcementImageInputKey, setAnnouncementImageInputKey] = useState(0);
 
   const generatedEmail = useMemo(() => {
     const name = adminForm.name
@@ -572,22 +575,39 @@ export function AdminPanel() {
       showError("Pilih tim dari dropdown untuk pengumuman finalis atau pemenang.");
       return;
     }
+    if (announcementImage && !announcementImage.type.startsWith("image/")) {
+      showError("File foto pengumuman harus berupa gambar.");
+      return;
+    }
+    if (announcementImage && announcementImage.size > 6 * 1024 * 1024) {
+      showError("Ukuran foto pengumuman maksimal 6MB.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
+      let imageUrl = "";
+      if (announcementImage) {
+        const uploaded = await api.uploadAnnouncementImage(token, announcementImage);
+        imageUrl = uploaded.url;
+      }
       let result: AnnouncementResult | null = null;
       if (isTeamAnnouncement && selectedAnnouncementTeam) {
         const detail = await api.adminTeamDetail(token, selectedAnnouncementTeam.id);
-        const prototypeUrl = latestPrototypeURL(detail);
+        const assets = latestSubmissionAssets(detail);
         result = {
           rank: announcementForm.type === "pemenang" ? Number(announcementForm.rank) || 1 : 0,
           teamName: selectedAnnouncementTeam.name,
           categoryName: selectedAnnouncementTeam.categoryName,
           institution: selectedAnnouncementTeam.institution,
           workTitle: announcementForm.title.trim(),
-          prototypeUrl,
-          previewUrl: prototypeUrl,
-          reason: announcementForm.reason
+          prototypeUrl: assets.prototypeUrl,
+          previewUrl: assets.prototypeUrl,
+          reason: announcementForm.reason,
+          pptUrl: assets.pptUrl,
+          posterUrl: assets.posterUrl,
+          proposalUrl: assets.proposalUrl,
+          reportUrl: assets.reportUrl
         };
       }
       const announcement = await api.createAnnouncement(token, {
@@ -595,6 +615,7 @@ export function AdminPanel() {
         type: announcementForm.type,
         title: announcementForm.title,
         body: announcementForm.body,
+        imageUrl,
         results: result ? [result] : []
       });
       showMessage(`${announcement.title} berhasil dipublish.`);
@@ -606,6 +627,8 @@ export function AdminPanel() {
         reason: ""
       }));
       setAnnouncementTeamSearch("");
+      setAnnouncementImage(null);
+      setAnnouncementImageInputKey((current) => current + 1);
     } catch (err) {
       showError(err instanceof Error ? err.message : "Gagal membuat pengumuman.");
     } finally {
@@ -622,7 +645,7 @@ export function AdminPanel() {
             title="Login Panitia"
             body="Panel ini digunakan untuk verifikasi peserta, jadwal, pembuatan akun, dan publikasi pengumuman."
           />
-          <form onSubmit={submitLogin} className="mt-10 rounded-lg border border-ink/10 bg-white p-6 shadow-soft">
+          <form onSubmit={submitLogin} className="mt-10 rounded-lg border border-dark/10 bg-white p-6 shadow-soft">
             <div className="grid gap-4">
               <div>
                 <label className="label" htmlFor="admin-email">
@@ -666,7 +689,7 @@ export function AdminPanel() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="text-sm font-bold text-ink/55">Admin Panel</p>
+            <p className="text-sm font-bold text-dark/55">Admin Panel</p>
             <h1 className="break-words text-2xl font-black sm:text-3xl">{event?.name ?? "Event belum dimuat"}</h1>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -689,13 +712,13 @@ export function AdminPanel() {
         </div>
 
         {switchingEvent ? (
-          <div className="mb-5 rounded-lg border border-lagoon/20 bg-lagoon/10 px-4 py-4 text-sm font-bold text-lagoon">
+          <div className="mb-5 rounded-lg border border-primary/20 bg-primary/10 px-4 py-4 text-sm font-bold text-primary">
             Memuat event baru dan menyesuaikan tampilan website...
           </div>
         ) : null}
 
         <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-          <aside className="rounded-lg border border-ink/10 bg-white p-2 shadow-soft sm:p-3">
+          <aside className="rounded-lg border border-dark/10 bg-white p-2 shadow-soft sm:p-3">
             <nav className="grid gap-1 sm:grid-cols-2 lg:grid-cols-1">
               {visibleTabs.map((item) => {
                 const Icon = item.icon;
@@ -705,7 +728,7 @@ export function AdminPanel() {
                     onClick={() => setTab(item.id)}
                     className={clsx(
                       "flex min-w-0 items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-black transition",
-                      tab === item.id ? "bg-ink text-white" : "text-ink/68 hover:bg-cloud hover:text-ink"
+                      tab === item.id ? "bg-dark text-white" : "text-dark/68 hover:bg-light hover:text-dark"
                     )}
                   >
                     <Icon className="shrink-0" size={18} />
@@ -721,23 +744,23 @@ export function AdminPanel() {
               <div className="grid gap-5 md:grid-cols-3">
                 {statCards.map(({ label, value, icon: Icon }) => (
                   <article key={label} className="card">
-                    <Icon className="text-lagoon" size={24} />
+                    <Icon className="text-primary" size={24} />
                     <p className="mt-4 text-3xl font-black">{value}</p>
-                    <p className="mt-1 text-sm font-bold text-ink/55">{label}</p>
+                    <p className="mt-1 text-sm font-bold text-dark/55">{label}</p>
                   </article>
                 ))}
               </div>
             ) : null}
 
             {tab === "peserta" ? (
-              <div className="rounded-lg border border-ink/10 bg-white p-4 shadow-soft sm:p-5">
+              <div className="rounded-lg border border-dark/10 bg-white p-4 shadow-soft sm:p-5">
                 <div className={clsx("grid gap-5", selectedTeam && "xl:grid-cols-[minmax(0,1fr)_360px]")}>
                   <div className="min-w-0">
                     <div className="grid gap-3 md:grid-cols-[1fr_220px]">
                       <div className="relative">
-                        <Search className="pointer-events-none absolute left-3 top-3 text-ink/35" size={18} />
+                        <Search className="pointer-events-none absolute left-3 top-3 text-dark/35" size={18} />
                         <input
-                          className="field pl-10"
+                          className="field !pl-10"
                           value={search}
                           onChange={(event) => setSearch(event.target.value)}
                           placeholder="Cari tim, ketua, instansi, email"
@@ -779,21 +802,21 @@ export function AdminPanel() {
 
             {tab === "event-switch" ? (
               <div className="grid gap-5">
-                <article className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                <article className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-lagoon">Event Aktif Saat Ini</p>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-primary">Event Aktif Saat Ini</p>
                       <h2 className="mt-3 break-words text-2xl font-black">{event?.name ?? "Belum ada event aktif"}</h2>
                       {event ? (
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <StatusPill tone={event.status === "aktif" ? "teal" : "ink"}>{event.status}</StatusPill>
-                          <StatusPill tone={event.lockedAt ? "coral" : "amber"}>
+                          <StatusPill tone={event.status === "aktif" ? "teal" : "dark"}>{event.status}</StatusPill>
+                          <StatusPill tone={event.lockedAt ? "orange" : "amber"}>
                             {event.lockedAt ? "Locked" : "Belum locked"}
                           </StatusPill>
-                          <span className="text-sm font-bold text-ink/55">{formatEventDates(event)}</span>
+                          <span className="text-sm font-bold text-dark/55">{formatEventDates(event)}</span>
                         </div>
                       ) : null}
-                      <p className="mt-4 max-w-3xl text-sm leading-6 text-ink/65">
+                      <p className="mt-4 max-w-3xl text-sm leading-6 text-dark/65">
                         Lock event bersifat permanen dari admin. Setelah dikunci, super admin tidak dapat membuka lock lagi.
                         Untuk mengganti event aktif, lock event lama terlebih dahulu, lalu pilih event baru.
                       </p>
@@ -801,7 +824,7 @@ export function AdminPanel() {
                     {event ? (
                       <button
                         type="button"
-                        className="btn-secondary shrink-0 border-coral/30 text-coral hover:bg-coral/10"
+                        className="btn-secondary shrink-0 border-orange/30 text-orange hover:bg-orange/10"
                         disabled={loading || Boolean(event.lockedAt)}
                         onClick={() => setConfirmAction({ type: "lock", event })}
                       >
@@ -812,13 +835,13 @@ export function AdminPanel() {
                   </div>
                 </article>
 
-                <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                <div className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h2 className="text-xl font-black">Pilih Event yang Dipakai Website</h2>
-                      <p className="mt-1 text-sm text-ink/60">Landing page, pendaftaran, dashboard, FAQ, jadwal, dan pengumuman mengikuti event aktif.</p>
+                      <p className="mt-1 text-sm text-dark/60">Landing page, pendaftaran, dashboard, FAQ, jadwal, dan pengumuman mengikuti event aktif.</p>
                     </div>
-                    <StatusPill tone="ink">{events.length} event</StatusPill>
+                    <StatusPill tone="dark">{events.length} event</StatusPill>
                   </div>
                   <div className="mt-5 grid gap-3">
                     {events.map((item) => {
@@ -830,19 +853,19 @@ export function AdminPanel() {
                           ? "Lock event aktif saat ini terlebih dahulu."
                           : "";
                       return (
-                        <article key={item.id} className={clsx("rounded-lg border p-4", isCurrent ? "border-lagoon/40 bg-lagoon/5" : "border-ink/10")}>
+                        <article key={item.id} className={clsx("rounded-lg border p-4", isCurrent ? "border-primary/40 bg-primary/5" : "border-dark/10")}>
                           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <StatusPill tone={item.status === "aktif" ? "teal" : item.status === "draft" ? "amber" : "ink"}>
+                                <StatusPill tone={item.status === "aktif" ? "teal" : item.status === "draft" ? "amber" : "dark"}>
                                   {item.status}
                                 </StatusPill>
-                                {item.lockedAt ? <StatusPill tone="coral">Locked</StatusPill> : null}
-                                <span className="text-xs font-bold text-ink/45">{formatEventDates(item)}</span>
+                                {item.lockedAt ? <StatusPill tone="orange">Locked</StatusPill> : null}
+                                <span className="text-xs font-bold text-dark/45">{formatEventDates(item)}</span>
                               </div>
                               <h3 className="mt-3 break-words font-black">{item.name}</h3>
-                              <p className="mt-1 break-words text-sm leading-6 text-ink/60">{item.theme}</p>
-                              {disabledReason ? <p className="mt-2 text-xs font-bold text-coral">{disabledReason}</p> : null}
+                              <p className="mt-1 break-words text-sm leading-6 text-dark/60">{item.theme}</p>
+                              {disabledReason ? <p className="mt-2 text-xs font-bold text-orange">{disabledReason}</p> : null}
                             </div>
                             <button
                               type="button"
@@ -858,9 +881,9 @@ export function AdminPanel() {
                       );
                     })}
                     {!events.length ? (
-                      <article className="rounded-lg border border-dashed border-ink/20 p-8 text-center">
+                      <article className="rounded-lg border border-dashed border-dark/20 p-8 text-center">
                         <p className="font-black">Belum ada event.</p>
-                        <p className="mt-2 text-sm text-ink/60">Buat periode baru terlebih dahulu.</p>
+                        <p className="mt-2 text-sm text-dark/60">Buat periode baru terlebih dahulu.</p>
                       </article>
                     ) : null}
                   </div>
@@ -869,9 +892,9 @@ export function AdminPanel() {
             ) : null}
 
             {tab === "event" ? (
-              <form onSubmit={createEvent} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+              <form onSubmit={createEvent} className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft">
                 <h2 className="text-xl font-black">Buat Periode Baru</h2>
-                <p className="mt-2 text-sm leading-6 text-ink/60">
+                <p className="mt-2 text-sm leading-6 text-dark/60">
                   Event baru dibuat sebagai draft atau arsip. Untuk menampilkan event baru ke website, gunakan tab Event Aktif.
                 </p>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -917,7 +940,7 @@ export function AdminPanel() {
 
             {tab === "panitia" ? (
               <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-                <form onSubmit={createAdmin} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                <form onSubmit={createAdmin} className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft">
                   <h2 className="text-xl font-black">Tambah Akun Panitia</h2>
                   <div className="mt-5 grid gap-4">
                     <TextField label="Nama" value={adminForm.name} onChange={(value) => setAdminForm((current) => ({ ...current, name: value }))} />
@@ -945,8 +968,8 @@ export function AdminPanel() {
                       onChange={(value) => setAdminForm((current) => ({ ...current, password: value }))}
                       placeholder="Kosongkan untuk memakai NIM"
                     />
-                    <div className="rounded-md bg-cloud px-4 py-3 text-sm">
-                      <span className="font-bold text-ink/55">Email:</span>{" "}
+                    <div className="rounded-md bg-light px-4 py-3 text-sm">
+                      <span className="font-bold text-dark/55">Email:</span>{" "}
                       <span className="font-black">{generatedEmail || "nama.nim@student.itera.ac.id"}</span>
                     </div>
                   </div>
@@ -957,11 +980,11 @@ export function AdminPanel() {
                     </button>
                   </div>
                 </form>
-                <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                <div className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft">
                   <h2 className="text-xl font-black">Akun Admin & Panitia</h2>
                   <div className="mt-5 overflow-x-auto">
                     <table className="w-full min-w-[620px] text-left text-sm">
-                      <thead className="border-b border-ink/10 text-xs uppercase text-ink/45">
+                      <thead className="border-b border-dark/10 text-xs uppercase text-dark/45">
                         <tr>
                           <th className="py-3 pr-4">Nama</th>
                           <th className="py-3 pr-4">Email</th>
@@ -969,12 +992,12 @@ export function AdminPanel() {
                           <th className="py-3 pr-4">Divisi</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-ink/10">
+                      <tbody className="divide-y divide-dark/10">
                         {adminUsers.map((item) => (
                           <tr key={item.id}>
                             <td className="py-3 pr-4">
                               <p className="font-black">{item.name}</p>
-                              <p className="text-xs text-ink/50">{item.nim || "-"}</p>
+                              <p className="text-xs text-dark/50">{item.nim || "-"}</p>
                             </td>
                             <td className="py-3 pr-4">{item.email}</td>
                             <td className="py-3 pr-4">{item.role}</td>
@@ -989,11 +1012,11 @@ export function AdminPanel() {
             ) : null}
 
             {tab === "jadwal" ? (
-              <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+              <div className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-xl font-black">Editor Jadwal</h2>
-                    <p className="mt-1 text-sm text-ink/60">Semua tahap disimpan ke tabel timeline event aktif.</p>
+                    <p className="mt-1 text-sm text-dark/60">Semua tahap disimpan ke tabel timeline event aktif.</p>
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -1012,7 +1035,7 @@ export function AdminPanel() {
                 </div>
                 <div className="mt-5 grid gap-4">
                   {timelineDraft.map((item, index) => (
-                    <div key={index} className="rounded-lg border border-ink/10 bg-cloud p-4">
+                    <div key={index} className="rounded-lg border border-dark/10 bg-light p-4">
                       <div className="mb-4 flex items-center justify-between">
                         <p className="text-sm font-black">Tahap {index + 1}</p>
                         <button
@@ -1036,18 +1059,18 @@ export function AdminPanel() {
                     </div>
                   ))}
                   {!timelineDraft.length ? (
-                    <article className="rounded-lg border border-dashed border-ink/20 p-8 text-center">
+                    <article className="rounded-lg border border-dashed border-dark/20 p-8 text-center">
                       <p className="font-black">Belum ada tahap jadwal.</p>
-                      <p className="mt-2 text-sm text-ink/60">Tambahkan tahap baru lalu simpan untuk mengisi timeline event.</p>
+                      <p className="mt-2 text-sm text-dark/60">Tambahkan tahap baru lalu simpan untuk mengisi timeline event.</p>
                     </article>
                   ) : null}
                 </div>
 
-                <div className="mt-8 border-t border-ink/10 pt-8">
+                <div className="mt-8 border-t border-dark/10 pt-8">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h2 className="text-xl font-black">Tahap Upload Karya</h2>
-                      <p className="mt-1 text-sm text-ink/60">Tahap ini menentukan pilihan upload di dashboard peserta.</p>
+                      <p className="mt-1 text-sm text-dark/60">Tahap ini menentukan pilihan upload di dashboard peserta.</p>
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -1066,7 +1089,7 @@ export function AdminPanel() {
                   </div>
                   <div className="mt-5 grid gap-4">
                     {submissionStageDraft.map((item, index) => (
-                      <div key={index} className="rounded-lg border border-ink/10 bg-cloud p-4">
+                      <div key={index} className="rounded-lg border border-dark/10 bg-light p-4">
                         <div className="mb-4 flex items-center justify-between">
                           <p className="text-sm font-black">Tahap Upload {index + 1}</p>
                           <button
@@ -1102,9 +1125,9 @@ export function AdminPanel() {
                       </div>
                     ))}
                     {!submissionStageDraft.length ? (
-                      <article className="rounded-lg border border-dashed border-ink/20 p-8 text-center">
+                      <article className="rounded-lg border border-dashed border-dark/20 p-8 text-center">
                         <p className="font-black">Belum ada tahap upload.</p>
-                        <p className="mt-2 text-sm text-ink/60">Tambahkan minimal satu tahap agar peserta bisa mengirim karya.</p>
+                        <p className="mt-2 text-sm text-dark/60">Tambahkan minimal satu tahap agar peserta bisa mengirim karya.</p>
                       </article>
                     ) : null}
                   </div>
@@ -1114,11 +1137,11 @@ export function AdminPanel() {
 
             {tab === "faq" ? (
               <div className="grid gap-5">
-                <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                <div className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h2 className="text-xl font-black">Aturan Jumlah Peserta</h2>
-                      <p className="mt-1 text-sm text-ink/60">
+                      <p className="mt-1 text-sm text-dark/60">
                         Batas ini dihitung termasuk ketua. Sistem akan menolak pendaftaran di luar batas ini.
                       </p>
                     </div>
@@ -1149,7 +1172,7 @@ export function AdminPanel() {
                 </div>
 
                 <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
-                  <form onSubmit={saveFAQ} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                  <form onSubmit={saveFAQ} className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft">
                     <h2 className="text-xl font-black">{editingFaqId ? "Edit FAQ" : "Tambah FAQ / Aturan"}</h2>
                     <div className="mt-5 grid gap-4">
                       <TextField
@@ -1170,7 +1193,7 @@ export function AdminPanel() {
                         value={String(faqForm.sortOrder)}
                         onChange={(value) => setFaqForm((current) => ({ ...current, sortOrder: Number(value) }))}
                       />
-                      <label className="flex items-center gap-3 rounded-md bg-cloud px-4 py-3 text-sm font-bold">
+                      <label className="flex items-center gap-3 rounded-md bg-light px-4 py-3 text-sm font-bold">
                         <input
                           type="checkbox"
                           checked={faqForm.isPublished}
@@ -1192,27 +1215,27 @@ export function AdminPanel() {
                     </div>
                   </form>
 
-                <div className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+                <div className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h2 className="text-xl font-black">FAQ & Aturan Publik</h2>
-                      <p className="mt-1 text-sm text-ink/60">{event?.name ?? "Event aktif"} memakai daftar ini secara dinamis.</p>
+                      <p className="mt-1 text-sm text-dark/60">{event?.name ?? "Event aktif"} memakai daftar ini secara dinamis.</p>
                     </div>
-                    <StatusPill tone="ink">{faqs.length} item</StatusPill>
+                    <StatusPill tone="dark">{faqs.length} item</StatusPill>
                   </div>
                   <div className="mt-5 grid gap-3">
                     {faqs.map((faq) => (
-                      <article key={faq.id} className="rounded-lg border border-ink/10 p-4">
+                      <article key={faq.id} className="rounded-lg border border-dark/10 p-4">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <StatusPill tone={faq.isPublished ? "teal" : "ink"}>
+                              <StatusPill tone={faq.isPublished ? "teal" : "dark"}>
                                 {faq.isPublished ? "Published" : "Draft"}
                               </StatusPill>
-                              <span className="text-xs font-bold text-ink/45">Urutan {faq.sortOrder}</span>
+                              <span className="text-xs font-bold text-dark/45">Urutan {faq.sortOrder}</span>
                             </div>
                             <h3 className="mt-3 break-words font-black">{faq.question}</h3>
-                            <p className="mt-2 break-words text-sm leading-6 text-ink/65">{faq.answer || "-"}</p>
+                            <p className="mt-2 break-words text-sm leading-6 text-dark/65">{faq.answer || "-"}</p>
                           </div>
                           <div className="flex shrink-0 gap-2">
                             <button type="button" className="btn-secondary px-3 py-2" onClick={() => editFAQ(faq)} disabled={loading}>
@@ -1231,9 +1254,9 @@ export function AdminPanel() {
                       </article>
                     ))}
                     {!faqs.length ? (
-                      <article className="rounded-lg border border-dashed border-ink/20 p-8 text-center">
+                      <article className="rounded-lg border border-dashed border-dark/20 p-8 text-center">
                         <p className="font-black">Belum ada FAQ.</p>
-                        <p className="mt-2 text-sm text-ink/60">Tambahkan aturan pertama untuk event aktif.</p>
+                        <p className="mt-2 text-sm text-dark/60">Tambahkan aturan pertama untuk event aktif.</p>
                       </article>
                     ) : null}
                   </div>
@@ -1243,7 +1266,7 @@ export function AdminPanel() {
             ) : null}
 
             {tab === "submission" ? (
-              <div className="rounded-lg border border-ink/10 bg-white p-4 shadow-soft sm:p-5">
+              <div className="rounded-lg border border-dark/10 bg-white p-4 shadow-soft sm:p-5">
                 <div className={clsx("grid gap-5", selectedTeam && "xl:grid-cols-[minmax(0,1fr)_360px]")}>
                   <div className="min-w-0">
                     <h2 className="text-xl font-black">Rekap Submission</h2>
@@ -1272,7 +1295,7 @@ export function AdminPanel() {
             ) : null}
 
             {tab === "pengumuman" ? (
-              <form onSubmit={createAnnouncement} className="rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+              <form onSubmit={createAnnouncement} className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft">
                 <h2 className="text-xl font-black">Publish Pengumuman</h2>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <div>
@@ -1309,6 +1332,51 @@ export function AdminPanel() {
                     value={announcementForm.title}
                     onChange={(value) => setAnnouncementForm((current) => ({ ...current, title: value }))}
                   />
+                  <div className="md:col-span-2">
+                    <label className="label" htmlFor="announcement-image">
+                      Foto Berita
+                    </label>
+                    <label
+                      htmlFor="announcement-image"
+                      className="flex cursor-pointer flex-col gap-3 rounded-lg border border-dashed border-dark/20 bg-light p-4 transition hover:border-primary hover:bg-primary/5 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <span className="flex min-w-0 items-center gap-3">
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-white text-primary shadow-soft">
+                          <ImagePlus size={20} />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-black">
+                            {announcementImage ? announcementImage.name : "Upload foto untuk kartu berita"}
+                          </span>
+                          <span className="mt-1 block text-xs font-bold text-dark/45">PNG, JPG, WEBP. Maksimal 6MB.</span>
+                        </span>
+                      </span>
+                      <span className="rounded-md border border-dark/10 bg-white px-3 py-2 text-xs font-black text-primary">
+                        Pilih Foto
+                      </span>
+                    </label>
+                    <input
+                      key={announcementImageInputKey}
+                      id="announcement-image"
+                      className="sr-only"
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => setAnnouncementImage(event.target.files?.[0] ?? null)}
+                    />
+                    {announcementImage ? (
+                      <button
+                        type="button"
+                        className="mt-2 inline-flex items-center gap-2 text-xs font-black text-dark/45 hover:text-red-600"
+                        onClick={() => {
+                          setAnnouncementImage(null);
+                          setAnnouncementImageInputKey((current) => current + 1);
+                        }}
+                      >
+                        <X size={14} />
+                        Hapus foto terpilih
+                      </button>
+                    ) : null}
+                  </div>
                   {announcementForm.type !== "info" ? (
                     <div className="md:col-span-2">
                       <label className="label" htmlFor="announcement-team-search">
@@ -1316,10 +1384,10 @@ export function AdminPanel() {
                       </label>
                       <div className="grid gap-3 md:grid-cols-[1fr_1.1fr]">
                         <div className="relative">
-                          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink/35" size={17} />
+                          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-dark/35" size={17} />
                           <input
                             id="announcement-team-search"
-                            className="field pl-10"
+                            className="field !pl-10"
                             value={announcementTeamSearch}
                             onChange={(event) => {
                               setAnnouncementTeamSearch(event.target.value);
@@ -1341,13 +1409,13 @@ export function AdminPanel() {
                         />
                       </div>
                       {selectedAnnouncementTeam ? (
-                        <div className="mt-3 grid gap-3 rounded-md border border-lagoon/20 bg-lagoon/5 p-3 text-sm md:grid-cols-3">
+                        <div className="mt-3 grid gap-3 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm md:grid-cols-3">
                           <Info label="Tim" value={selectedAnnouncementTeam.name} />
                           <Info label="Kategori" value={selectedAnnouncementTeam.categoryName} />
                           <Info label="Instansi" value={selectedAnnouncementTeam.institution} />
                         </div>
                       ) : (
-                        <p className="mt-2 text-xs font-bold text-ink/45">Data tim, kategori, instansi, dan link prototype akan diambil otomatis dari database.</p>
+                        <p className="mt-2 text-xs font-bold text-dark/45">Data tim, kategori, instansi, dan link prototype akan diambil otomatis dari database.</p>
                       )}
                     </div>
                   ) : null}
@@ -1377,10 +1445,10 @@ export function AdminPanel() {
 
             {tab === "akun" ? (
               <article className="card">
-                <StatusPill tone={user.role === "super_admin" ? "ink" : "teal"}>{user.role}</StatusPill>
+                <StatusPill tone={user.role === "super_admin" ? "dark" : "teal"}>{user.role}</StatusPill>
                 <h2 className="mt-4 text-2xl font-black">{user.name}</h2>
-                <p className="mt-2 text-sm text-ink/65">{user.email}</p>
-                <p className="mt-1 text-sm text-ink/65">Divisi {user.division || "-"}</p>
+                <p className="mt-2 text-sm text-dark/65">{user.email}</p>
+                <p className="mt-1 text-sm text-dark/65">Divisi {user.division || "-"}</p>
               </article>
             ) : null}
           </div>
@@ -1432,8 +1500,20 @@ function normalizeTeamDetail(detail: TeamDetail): TeamDetail {
   };
 }
 
-function latestPrototypeURL(detail: TeamDetail) {
-  return (detail.submissions ?? []).find((submission) => submission.prototypeUrl)?.prototypeUrl ?? "";
+function latestSubmissionAssets(detail: TeamDetail) {
+  const submissions = [...(detail.submissions ?? [])].sort(
+    (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+  );
+  const findURL = (key: "proposalUrl" | "prototypeUrl" | "pptUrl" | "reportUrl" | "posterUrl") =>
+    submissions.find((submission) => submission[key])?.[key] ?? "";
+
+  return {
+    proposalUrl: findURL("proposalUrl"),
+    prototypeUrl: findURL("prototypeUrl"),
+    pptUrl: findURL("pptUrl"),
+    reportUrl: findURL("reportUrl"),
+    posterUrl: findURL("posterUrl")
+  };
 }
 
 function sortFAQs(items: FAQ[]) {
@@ -1457,15 +1537,15 @@ function EventActionModal({
 }) {
   const isLock = action.type === "lock";
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/55 px-4 py-6">
-      <article className="w-full max-w-lg rounded-lg border border-ink/10 bg-white p-5 shadow-soft">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-dark/55 px-4 py-6">
+      <article className="w-full max-w-lg rounded-lg border border-dark/10 bg-white p-5 shadow-soft">
         <div className="flex items-start gap-3">
-          <span className={clsx("grid h-10 w-10 shrink-0 place-items-center rounded-md", isLock ? "bg-coral/10 text-coral" : "bg-lagoon/10 text-lagoon")}>
+          <span className={clsx("grid h-10 w-10 shrink-0 place-items-center rounded-md", isLock ? "bg-orange/10 text-orange" : "bg-primary/10 text-primary")}>
             {isLock ? <Lock size={20} /> : <AlertTriangle size={20} />}
           </span>
           <div className="min-w-0">
             <h2 className="text-xl font-black">{isLock ? "Lock event ini?" : "Gunakan event ini?"}</h2>
-            <p className="mt-2 break-words text-sm leading-6 text-ink/65">
+            <p className="mt-2 break-words text-sm leading-6 text-dark/65">
               {isLock
                 ? `${action.event.name} tahun ${action.event.year} akan dikunci permanen dari admin. Setelah dikunci, hanya developer yang bisa membuka lock lewat database.`
                 : `${action.event.name} akan menjadi event aktif. Semua tampilan website akan memakai data event ini setelah proses selesai.`}
@@ -1476,7 +1556,7 @@ function EventActionModal({
           <button type="button" className="btn-secondary" onClick={onCancel} disabled={loading}>
             Tidak
           </button>
-          <button type="button" className={isLock ? "btn-secondary border-coral/30 text-coral hover:bg-coral/10" : "btn-primary"} onClick={onConfirm} disabled={loading}>
+          <button type="button" className={isLock ? "btn-secondary border-orange/30 text-orange hover:bg-orange/10" : "btn-primary"} onClick={onConfirm} disabled={loading}>
             {loading ? "Memproses..." : "Ya"}
           </button>
         </div>
@@ -1530,7 +1610,7 @@ function TextField({
       </label>
       <input
         id={id}
-        className="field disabled:bg-ink/5 disabled:text-ink/45"
+        className="field disabled:bg-dark/5 disabled:text-dark/45"
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -1591,17 +1671,17 @@ function TeamDetailPanel({
       className={clsx(
         "min-w-0",
         embedded
-          ? "border-t border-ink/10 pt-5 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0"
-          : "rounded-lg border border-ink/10 bg-white p-4 shadow-soft sm:p-5"
+          ? "border-t border-dark/10 pt-5 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0"
+          : "rounded-lg border border-dark/10 bg-white p-4 shadow-soft sm:p-5"
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <StatusPill tone={detail.team.verificationStatus === "verified" ? "teal" : detail.team.verificationStatus === "rejected" ? "coral" : "amber"}>
+          <StatusPill tone={detail.team.verificationStatus === "verified" ? "teal" : detail.team.verificationStatus === "rejected" ? "orange" : "amber"}>
             {detail.team.verificationStatus}
           </StatusPill>
           <h2 className="mt-4 break-words text-xl font-black">{detail.team.name}</h2>
-          <p className="mt-1 break-words text-sm text-ink/60">{detail.category.name}</p>
+          <p className="mt-1 break-words text-sm text-dark/60">{detail.category.name}</p>
         </div>
         <button type="button" className="btn-secondary px-3 py-2" onClick={onClose} aria-label="Tutup detail tim">
           <X size={16} />
@@ -1611,7 +1691,7 @@ function TeamDetailPanel({
       {canDelete ? (
         <div className="mt-5 rounded-md border border-red-200 bg-red-50 p-3">
           <p className="text-sm font-black text-red-600">Zona Super Admin</p>
-          <p className="mt-1 text-xs leading-5 text-ink/60">Menghapus tim akan menghapus data pendaftaran, submission, dan akses tahap dari database.</p>
+          <p className="mt-1 text-xs leading-5 text-dark/60">Menghapus tim akan menghapus data pendaftaran, submission, dan akses tahap dari database.</p>
           <button
             type="button"
             className="mt-3 inline-flex items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-black text-red-600 transition hover:border-red-600 hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -1624,7 +1704,7 @@ function TeamDetailPanel({
         </div>
       ) : null}
 
-      <div className="mt-5 grid gap-3 border-t border-ink/10 pt-5 text-sm">
+      <div className="mt-5 grid gap-3 border-t border-dark/10 pt-5 text-sm">
         <Info label="ID Tim" value={detail.team.id} />
         <Info label="Batch" value={`Batch ${detail.team.batch}`} />
         <Info label="Ketua" value={detail.team.leaderName} />
@@ -1639,12 +1719,12 @@ function TeamDetailPanel({
           {detail.team.members.map((member, index) => (
             <div
               key={`${member.email || member.name}-${index}`}
-              className={(member.role || "").toLowerCase() === "ketua" ? "rounded-md border border-lagoon/20 bg-lagoon/5 p-3 text-sm" : "rounded-md bg-cloud p-3 text-sm"}
+              className={(member.role || "").toLowerCase() === "ketua" ? "rounded-md border border-primary/20 bg-primary/5 p-3 text-sm" : "rounded-md bg-light p-3 text-sm"}
             >
               <p className="font-black">
                 {index + 1}. {member.name}
               </p>
-              <p className="mt-1 text-ink/60">{member.email || "-"} - {member.role || "-"}</p>
+              <p className="mt-1 text-dark/60">{member.email || "-"} - {member.role || "-"}</p>
             </div>
           ))}
         </div>
@@ -1654,12 +1734,12 @@ function TeamDetailPanel({
         <p className="text-sm font-black">Submission</p>
         <div className="mt-3 grid gap-3">
           {detail.submissions.map((submission) => (
-            <div key={submission.id} className="rounded-md border border-ink/10 p-3 text-sm">
+            <div key={submission.id} className="rounded-md border border-dark/10 p-3 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <p className="font-black capitalize">{submission.stage}</p>
                 <StatusPill tone="teal">{submission.status}</StatusPill>
               </div>
-              <div className="mt-3 grid gap-2 text-ink/65">
+              <div className="mt-3 grid gap-2 text-dark/65">
                 <Info label="Proposal" value={submission.proposalUrl || "-"} />
                 <Info label="Prototype" value={submission.prototypeUrl || "-"} />
                 <Info label="PPT" value={submission.pptUrl || "-"} />
@@ -1668,7 +1748,7 @@ function TeamDetailPanel({
               </div>
             </div>
           ))}
-          {!detail.submissions.length ? <p className="text-sm text-ink/60">Belum ada submission.</p> : null}
+          {!detail.submissions.length ? <p className="text-sm text-dark/60">Belum ada submission.</p> : null}
         </div>
       </div>
 
@@ -1676,17 +1756,17 @@ function TeamDetailPanel({
         <p className="text-sm font-black">Akses Tahap Upload</p>
         <div className="mt-3 grid gap-3">
           {detail.submissionStages.map((item) => (
-            <div key={item.stage.id} className="rounded-md border border-ink/10 p-3 text-sm">
+            <div key={item.stage.id} className="rounded-md border border-dark/10 p-3 text-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap gap-2">
                     <StatusPill tone={item.canSubmit ? "teal" : "amber"}>
                       {item.canSubmit ? "Bisa Submit" : "Tertutup"}
                     </StatusPill>
-                    {item.stage.requiresApproval ? <StatusPill tone={item.isAllowed ? "teal" : "ink"}>{item.isAllowed ? "Lolos" : "Belum Lolos"}</StatusPill> : null}
+                    {item.stage.requiresApproval ? <StatusPill tone={item.isAllowed ? "teal" : "dark"}>{item.isAllowed ? "Lolos" : "Belum Lolos"}</StatusPill> : null}
                   </div>
                   <p className="mt-3 font-black">{item.stage.label}</p>
-                  <p className="mt-1 text-ink/60">{item.reason || "Tahap terbuka untuk tim ini."}</p>
+                  <p className="mt-1 text-dark/60">{item.reason || "Tahap terbuka untuk tim ini."}</p>
                 </div>
                 {item.stage.requiresApproval ? (
                   <button
@@ -1701,7 +1781,7 @@ function TeamDetailPanel({
               </div>
             </div>
           ))}
-          {!detail.submissionStages.length ? <p className="text-sm text-ink/60">Belum ada tahap upload untuk event ini.</p> : null}
+          {!detail.submissionStages.length ? <p className="text-sm text-dark/60">Belum ada tahap upload untuk event ini.</p> : null}
         </div>
       </div>
     </article>
@@ -1711,7 +1791,7 @@ function TeamDetailPanel({
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <p>
-      <span className="font-bold text-ink/50">{label}:</span> <span className="break-words">{value}</span>
+      <span className="font-bold text-dark/50">{label}:</span> <span className="break-words">{value}</span>
     </p>
   );
 }
@@ -1756,21 +1836,21 @@ function TeamTable({
             onClick={() => onDetail(team.id)}
             onKeyDown={(event) => openFromKeyboard(event, team.id)}
             className={clsx(
-              "cursor-pointer rounded-lg border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-lagoon/35",
-              selectedTeamId === team.id ? "border-lagoon bg-lagoon/5" : "border-ink/10 bg-white hover:border-lagoon/45 hover:bg-cloud"
+              "cursor-pointer rounded-lg border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-primary/35",
+              selectedTeamId === team.id ? "border-primary bg-primary/5" : "border-dark/10 bg-white hover:border-primary/45 hover:bg-light"
             )}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="break-words font-black">{team.name}</p>
-                <p className="mt-1 break-words text-xs text-ink/50">{team.institution}</p>
+                <p className="mt-1 break-words text-xs text-dark/50">{team.institution}</p>
               </div>
-              <StatusPill tone={team.verificationStatus === "verified" ? "teal" : team.verificationStatus === "rejected" ? "coral" : "amber"}>
+              <StatusPill tone={team.verificationStatus === "verified" ? "teal" : team.verificationStatus === "rejected" ? "orange" : "amber"}>
                 {team.verificationStatus}
               </StatusPill>
             </div>
 
-            <div className="mt-4 grid gap-2 rounded-md bg-cloud px-3 py-3 text-sm text-ink/70">
+            <div className="mt-4 grid gap-2 rounded-md bg-light px-3 py-3 text-sm text-dark/70">
               <Info label="Kategori" value={team.categoryName} />
               <Info label="Batch" value={`Batch ${team.batch}`} />
               <Info label="Ketua" value={team.leaderName} />
@@ -1799,12 +1879,12 @@ function TeamTable({
             ) : null}
           </article>
         ))}
-        {!teams.length ? <p className="p-6 text-center text-sm text-ink/60">Belum ada peserta sesuai filter.</p> : null}
+        {!teams.length ? <p className="p-6 text-center text-sm text-dark/60">Belum ada peserta sesuai filter.</p> : null}
       </div>
 
       <div className="mt-5 hidden overflow-x-auto lg:block">
         <table className={clsx("w-full text-left text-sm", compact ? "min-w-[680px]" : "min-w-[760px] lg:min-w-[900px]")}>
-          <thead className="border-b border-ink/10 text-xs uppercase text-ink/45">
+          <thead className="border-b border-dark/10 text-xs uppercase text-dark/45">
             <tr>
               <th className="py-3 pr-4">Tim</th>
               <th className="py-3 pr-4">Kategori</th>
@@ -1814,7 +1894,7 @@ function TeamTable({
               {!compact ? <th className="py-3 pr-4">Aksi</th> : null}
             </tr>
           </thead>
-          <tbody className="divide-y divide-ink/10">
+          <tbody className="divide-y divide-dark/10">
             {teams.map((team) => (
               <tr
                 key={team.id}
@@ -1824,19 +1904,19 @@ function TeamTable({
                 onClick={() => onDetail(team.id)}
                 onKeyDown={(event) => openFromKeyboard(event, team.id)}
                 className={clsx(
-                  "cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-lagoon/35",
-                  selectedTeamId === team.id ? "bg-lagoon/5" : "hover:bg-cloud"
+                  "cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/35",
+                  selectedTeamId === team.id ? "bg-primary/5" : "hover:bg-light"
                 )}
               >
                 <td className="py-3 pr-4">
                   <p className="font-black">{team.name}</p>
-                  <p className="text-xs text-ink/50">{team.institution}</p>
+                  <p className="text-xs text-dark/50">{team.institution}</p>
                 </td>
                 <td className="py-3 pr-4">{team.categoryName}</td>
                 <td className="py-3 pr-4">Batch {team.batch}</td>
                 <td className="py-3 pr-4">{team.leaderName}</td>
                 <td className="py-3 pr-4">
-                  <StatusPill tone={team.verificationStatus === "verified" ? "teal" : team.verificationStatus === "rejected" ? "coral" : "amber"}>
+                  <StatusPill tone={team.verificationStatus === "verified" ? "teal" : team.verificationStatus === "rejected" ? "orange" : "amber"}>
                     {team.verificationStatus}
                   </StatusPill>
                 </td>
@@ -1867,7 +1947,7 @@ function TeamTable({
             ))}
             {!teams.length ? (
               <tr>
-                <td className="py-8 text-center text-ink/60" colSpan={compact ? 5 : 6}>
+                <td className="py-8 text-center text-dark/60" colSpan={compact ? 5 : 6}>
                   Belum ada peserta sesuai filter.
                 </td>
               </tr>

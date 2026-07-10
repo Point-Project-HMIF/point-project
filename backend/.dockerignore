@@ -1,0 +1,7 @@
+.env
+api.err.log
+api.out.log
+tmp/
+dist/
+.git/
+*.exe

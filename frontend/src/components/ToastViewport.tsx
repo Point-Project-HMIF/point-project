@@ -63,28 +63,28 @@ export function ToastViewport() {
             aria-live="polite"
             className={clsx(
               "pointer-events-auto flex gap-3 rounded-lg border bg-white p-4 shadow-soft",
-              item.type === "success" && "border-lagoon/25",
-              item.type === "error" && "border-coral/25",
-              item.type === "info" && "border-ink/10"
+              item.type === "success" && "border-primary/25",
+              item.type === "error" && "border-orange/25",
+              item.type === "info" && "border-dark/10"
             )}
           >
             <span
               className={clsx(
                 "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md",
-                item.type === "success" && "bg-lagoon/10 text-lagoon",
-                item.type === "error" && "bg-coral/10 text-coral",
-                item.type === "info" && "bg-cloud text-ink"
+                item.type === "success" && "bg-primary/10 text-primary",
+                item.type === "error" && "bg-orange/10 text-orange",
+                item.type === "info" && "bg-light text-dark"
               )}
             >
               <Icon size={18} />
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-black">{item.title}</p>
-              <p className="mt-1 break-words text-sm leading-5 text-ink/68">{item.message}</p>
+              <p className="mt-1 break-words text-sm leading-5 text-dark/68">{item.message}</p>
             </div>
             <button
               type="button"
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-ink/45 transition hover:bg-cloud hover:text-ink"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-dark/45 transition hover:bg-light hover:text-dark"
               onClick={() => setItems((current) => current.filter((toast) => toast.id !== item.id))}
               aria-label="Tutup notifikasi"
             >
