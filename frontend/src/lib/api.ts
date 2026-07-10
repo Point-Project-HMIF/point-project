@@ -129,6 +129,7 @@ export const api = {
     return request<Team[]>(`/admin/teams${qs ? `?${qs}` : ""}`, {}, token);
   },
   adminTeamDetail: (token: string, teamId: string) => request<TeamDetail>(`/admin/teams/${teamId}`, {}, token),
+  deleteTeam: (token: string, teamId: string) => request<{ message: string }>(`/admin/teams/${teamId}`, { method: "DELETE" }, token),
   verifyTeam: (token: string, teamId: string, status = "verified") =>
     request<Team>(
       `/admin/teams/${teamId}/verify`,

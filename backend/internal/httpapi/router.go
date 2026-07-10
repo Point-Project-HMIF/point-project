@@ -314,6 +314,7 @@ func NewRouter(
 			r.Get("/admin/stats", server.adminStats)
 			r.Get("/admin/teams", server.listTeams)
 			r.Get("/admin/teams/{teamID}", server.teamDetail)
+			r.Delete("/admin/teams/{teamID}", server.deleteTeam)
 			r.Patch("/admin/teams/{teamID}/verify", server.verifyTeam)
 			r.Patch("/admin/teams/{teamID}/stage-access", server.setTeamStageAccess)
 			r.Post("/admin/events", server.createEvent)
@@ -704,6 +705,17 @@ func (s *Server) teamDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, detail)
+}
+
+func (s *Server) deleteTeam(w http.ResponseWriter, r *http.Request) {
+	if !requireSuperAdmin(w, r) {
+		return
+	}
+	if err := s.store.DeleteTeam(r.Context(), chi.URLParam(r, "teamID")); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeData(w, http.StatusOK, map[string]string{"message": "Tim berhasil dihapus"})
 }
 
 func (s *Server) verifyTeam(w http.ResponseWriter, r *http.Request) {

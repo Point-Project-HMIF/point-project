@@ -314,6 +314,28 @@ export function AdminPanel() {
     }
   }
 
+  async function deleteTeam(teamId: string, teamName: string) {
+    if (!isSuperAdmin) {
+      setError("Hanya super admin yang dapat menghapus tim.");
+      return;
+    }
+    const confirmed = window.confirm(`Hapus tim ${teamName}? Semua data pendaftaran, submission, dan akses tahap tim ini akan ikut terhapus dari database.`);
+    if (!confirmed) return;
+    setLoading(true);
+    setError("");
+    try {
+      await api.deleteTeam(token, teamId);
+      setSelectedTeam(null);
+      setTeams((current) => current.filter((team) => team.id !== teamId));
+      setMessage(`Tim ${teamName} berhasil dihapus.`);
+      await loadAdminData(token);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menghapus tim.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function createEvent(eventSubmit: FormEvent<HTMLFormElement>) {
     eventSubmit.preventDefault();
     setLoading(true);
@@ -731,7 +753,9 @@ export function AdminPanel() {
                       detail={selectedTeam}
                       onClose={() => setSelectedTeam(null)}
                       onStageAccess={setStageAccess}
+                      onDeleteTeam={deleteTeam}
                       loading={loading}
+                      canDelete={isSuperAdmin}
                       embedded
                     />
                   ) : null}
@@ -1218,7 +1242,9 @@ export function AdminPanel() {
                       detail={selectedTeam}
                       onClose={() => setSelectedTeam(null)}
                       onStageAccess={setStageAccess}
+                      onDeleteTeam={deleteTeam}
                       loading={loading}
+                      canDelete={isSuperAdmin}
                       embedded
                     />
                   ) : null}
@@ -1526,13 +1552,17 @@ function TeamDetailPanel({
   detail,
   onClose,
   onStageAccess,
+  onDeleteTeam,
   loading,
+  canDelete,
   embedded = false
 }: {
   detail: TeamDetail;
   onClose: () => void;
   onStageAccess: (teamId: string, stageId: string, isAllowed: boolean) => void;
+  onDeleteTeam: (teamId: string, teamName: string) => void;
   loading: boolean;
+  canDelete: boolean;
   embedded?: boolean;
 }) {
   return (
@@ -1556,6 +1586,22 @@ function TeamDetailPanel({
           <X size={16} />
         </button>
       </div>
+
+      {canDelete ? (
+        <div className="mt-5 rounded-md border border-coral/20 bg-coral/5 p-3">
+          <p className="text-sm font-black text-coral">Zona Super Admin</p>
+          <p className="mt-1 text-xs leading-5 text-ink/60">Menghapus tim akan menghapus data pendaftaran, submission, dan akses tahap dari database.</p>
+          <button
+            type="button"
+            className="mt-3 inline-flex items-center justify-center gap-2 rounded-md border border-coral/30 bg-white px-3 py-2 text-sm font-black text-coral transition hover:bg-coral hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={loading}
+            onClick={() => onDeleteTeam(detail.team.id, detail.team.name)}
+          >
+            <Trash2 size={16} />
+            Hapus Tim
+          </button>
+        </div>
+      ) : null}
 
       <div className="mt-5 grid gap-3 border-t border-ink/10 pt-5 text-sm">
         <Info label="ID Tim" value={detail.team.id} />

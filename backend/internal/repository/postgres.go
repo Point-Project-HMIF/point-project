@@ -784,6 +784,17 @@ func (s *PostgresStore) GetTeamDetail(ctx context.Context, teamID string) (model
 	}, nil
 }
 
+func (s *PostgresStore) DeleteTeam(ctx context.Context, teamID string) error {
+	result, err := s.db.Exec(ctx, `delete from teams where id = $1`, teamID)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return errors.New("team not found")
+	}
+	return nil
+}
+
 func (s *PostgresStore) getTeam(ctx context.Context, teamID string) (models.Team, error) {
 	row := s.db.QueryRow(ctx, `
 		select t.id::text, t.event_id::text, t.category_id::text, c.name,

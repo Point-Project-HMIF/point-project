@@ -29,6 +29,7 @@ type Store interface {
 	CreateTeam(ctx context.Context, input models.RegistrationRequest) (models.Team, error)
 	GetDashboard(ctx context.Context, teamID string) (models.Dashboard, error)
 	GetTeamDetail(ctx context.Context, teamID string) (models.TeamDetail, error)
+	DeleteTeam(ctx context.Context, teamID string) error
 	CreateSubmission(ctx context.Context, teamID string, input models.SubmissionRequest) (models.Submission, error)
 	FindAdminByEmail(ctx context.Context, email string) (models.AdminAccount, error)
 	ListAdminUsers(ctx context.Context) ([]models.AdminUser, error)
