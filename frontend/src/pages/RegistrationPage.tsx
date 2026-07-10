@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Send, Trash2, UserPlus } from "lucide-react";
 import clsx from "clsx";
+import { CustomSelect } from "../components/CustomSelect";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api } from "../lib/api";
 import { toastError, toastSuccess } from "../lib/toast";
@@ -410,32 +411,32 @@ export function RegistrationPage() {
                   <label className="label" htmlFor="batch">
                     Batch Pendaftaran
                   </label>
-                  <select
+                  <CustomSelect
                     id="batch"
-                    className="field"
-                    value={form.batch}
-                    onChange={(event) => updateField("batch", Number(event.target.value))}
-                  >
-                    <option value={1}>Batch 1</option>
-                    <option value={2}>Batch 2</option>
-                  </select>
+                    value={String(form.batch)}
+                    onChange={(value) => updateField("batch", Number(value))}
+                    options={[
+                      { value: "1", label: "Batch 1" },
+                      { value: "2", label: "Batch 2" }
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="label" htmlFor="category">
                     Kategori Lomba
                   </label>
-                  <select
+                  <CustomSelect
                     id="category"
-                    className="field"
                     value={form.categoryId}
-                    onChange={(event) => updateField("categoryId", event.target.value)}
-                  >
-                    {categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(value) => updateField("categoryId", value)}
+                    placeholder="Pilih kategori lomba"
+                    options={categories.map((category) => ({
+                      value: category.id,
+                      label: category.name,
+                      description: category.description
+                    }))}
+                    disabled={!categories.length}
+                  />
                 </div>
                 <div className="rounded-lg border border-ink/10 bg-cloud p-5 md:col-span-2">
                   <h3 className="font-black">{selectedCategory?.name}</h3>

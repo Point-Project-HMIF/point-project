@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Award, ExternalLink, Filter, Medal, Newspaper, Trophy } from "lucide-react";
+import { CustomSelect } from "../components/CustomSelect";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api } from "../lib/api";
 import { toastError } from "../lib/toast";
@@ -88,24 +89,34 @@ export function AnnouncementsPage() {
                 <label className="label" htmlFor="year-filter">
                   Tahun
                 </label>
-                <select id="year-filter" className="field" value={eventId} onChange={(event) => setEventId(event.target.value)}>
-                  {events.map((event) => (
-                    <option key={event.id} value={event.id}>
-                      {event.year} - {event.name}
-                    </option>
-                  ))}
-                </select>
+                <CustomSelect
+                  id="year-filter"
+                  value={eventId}
+                  onChange={setEventId}
+                  placeholder="Pilih tahun"
+                  options={events.map((event) => ({
+                    value: event.id,
+                    label: `${event.year} - ${event.name}`,
+                    description: event.status
+                  }))}
+                  disabled={!events.length}
+                />
               </div>
               <div>
                 <label className="label" htmlFor="type-filter">
                   Jenis
                 </label>
-                <select id="type-filter" className="field" value={type} onChange={(event) => setType(event.target.value)}>
-                  <option value="">Semua</option>
-                  <option value="finalis">Finalis</option>
-                  <option value="pemenang">Pemenang</option>
-                  <option value="info">Info</option>
-                </select>
+                <CustomSelect
+                  id="type-filter"
+                  value={type}
+                  onChange={setType}
+                  options={[
+                    { value: "", label: "Semua" },
+                    { value: "finalis", label: "Finalis" },
+                    { value: "pemenang", label: "Pemenang" },
+                    { value: "info", label: "Info" }
+                  ]}
+                />
               </div>
               <span className="inline-flex items-center justify-center gap-2 rounded-md bg-cloud px-4 py-3 text-sm font-black text-ink/70">
                 <Filter size={17} />

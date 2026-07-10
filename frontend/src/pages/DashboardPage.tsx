@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Bell, CheckCircle2, ExternalLink, FileUp, RefreshCw, Send, ShieldAlert } from "lucide-react";
+import { CustomSelect } from "../components/CustomSelect";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api, resolveFileURL } from "../lib/api";
 import { toastError, toastSuccess } from "../lib/toast";
@@ -239,18 +240,19 @@ export function DashboardPage() {
                   <label className="label" htmlFor="stage">
                     Tahap
                   </label>
-                  <select
+                  <CustomSelect
                     id="stage"
-                    className="field"
                     value={submission.stage}
-                    onChange={(event) => setSubmission((current) => ({ ...current, stage: event.target.value }))}
-                  >
-                    {submissionStages.map((item) => (
-                      <option key={item.stage.id} value={item.stage.key} disabled={!item.canSubmit}>
-                        {item.stage.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(value) => setSubmission((current) => ({ ...current, stage: value }))}
+                    placeholder="Pilih tahap upload"
+                    options={submissionStages.map((item) => ({
+                      value: item.stage.key,
+                      label: item.stage.label,
+                      description: item.canSubmit ? "Terbuka untuk tim kamu" : item.reason || "Belum tersedia",
+                      disabled: !item.canSubmit
+                    }))}
+                    disabled={!submissionStages.length}
+                  />
                   {!submissionStages.length ? <p className="mt-2 text-xs font-bold text-coral">Belum ada tahap upload dari admin.</p> : null}
                 </div>
                 <div className="md:col-span-2">

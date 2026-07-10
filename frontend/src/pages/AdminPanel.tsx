@@ -24,6 +24,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import clsx from "clsx";
+import { CustomSelect } from "../components/CustomSelect";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api, isNotFoundError } from "../lib/api";
 import { toastError, toastSuccess } from "../lib/toast";
@@ -742,12 +743,16 @@ export function AdminPanel() {
                           placeholder="Cari tim, ketua, instansi, email"
                         />
                       </div>
-                      <select className="field" value={status} onChange={(event) => setStatus(event.target.value)}>
-                        <option value="">Semua status</option>
-                        <option value="pending">Pending</option>
-                        <option value="verified">Verified</option>
-                        <option value="rejected">Rejected</option>
-                      </select>
+                      <CustomSelect
+                        value={status}
+                        onChange={setStatus}
+                        options={[
+                          { value: "", label: "Semua status" },
+                          { value: "pending", label: "Pending" },
+                          { value: "verified", label: "Verified" },
+                          { value: "rejected", label: "Rejected" }
+                        ]}
+                      />
                     </div>
                     <TeamTable
                       teams={filteredTeams}
@@ -890,15 +895,15 @@ export function AdminPanel() {
                     <label className="label" htmlFor="status">
                       Status
                     </label>
-                    <select
+                    <CustomSelect
                       id="status"
-                      className="field"
                       value={eventForm.status}
-                      onChange={(event) => setEventForm((current) => ({ ...current, status: event.target.value }))}
-                    >
-                      <option value="draft">Draft</option>
-                      <option value="arsip">Arsip</option>
-                    </select>
+                      onChange={(value) => setEventForm((current) => ({ ...current, status: value }))}
+                      options={[
+                        { value: "draft", label: "Draft" },
+                        { value: "arsip", label: "Arsip" }
+                      ]}
+                    />
                   </div>
                 </div>
                 <div className="mt-5 flex justify-end">
@@ -921,16 +926,16 @@ export function AdminPanel() {
                       <label className="label" htmlFor="admin-role">
                         Role
                       </label>
-                      <select
+                      <CustomSelect
                         id="admin-role"
-                        className="field"
                         value={adminForm.role}
-                        onChange={(event) => setAdminForm((current) => ({ ...current, role: event.target.value }))}
-                      >
-                        <option value="admin">Admin</option>
-                        <option value="super_admin">Super Admin</option>
-                        <option value="juri">Juri</option>
-                      </select>
+                        onChange={(value) => setAdminForm((current) => ({ ...current, role: value }))}
+                        options={[
+                          { value: "admin", label: "Admin" },
+                          { value: "super_admin", label: "Super Admin" },
+                          { value: "juri", label: "Juri" }
+                        ]}
+                      />
                     </div>
                     <TextField label="Divisi" value={adminForm.division} onChange={(value) => setAdminForm((current) => ({ ...current, division: value }))} />
                     <TextField
@@ -1269,22 +1274,22 @@ export function AdminPanel() {
                     <label className="label" htmlFor="announcement-type">
                       Jenis
                     </label>
-                    <select
+                    <CustomSelect
                       id="announcement-type"
-                      className="field"
                       value={announcementForm.type}
-                      onChange={(event) =>
+                      onChange={(value) =>
                         setAnnouncementForm((current) => ({
                           ...current,
-                          type: event.target.value,
-                          teamId: event.target.value === "info" ? "" : current.teamId
+                          type: value,
+                          teamId: value === "info" ? "" : current.teamId
                         }))
                       }
-                    >
-                      <option value="finalis">Finalis</option>
-                      <option value="pemenang">Pemenang</option>
-                      <option value="info">Info</option>
-                    </select>
+                      options={[
+                        { value: "finalis", label: "Finalis" },
+                        { value: "pemenang", label: "Pemenang" },
+                        { value: "info", label: "Info" }
+                      ]}
+                    />
                   </div>
                   {announcementForm.type === "pemenang" ? (
                     <TextField
@@ -1311,22 +1316,24 @@ export function AdminPanel() {
                             id="announcement-team-search"
                             className="field pl-10"
                             value={announcementTeamSearch}
-                            onChange={(event) => setAnnouncementTeamSearch(event.target.value)}
+                            onChange={(event) => {
+                              setAnnouncementTeamSearch(event.target.value);
+                              setAnnouncementForm((current) => ({ ...current, teamId: "" }));
+                            }}
                             placeholder="Cari nama tim, ketua, instansi"
                           />
                         </div>
-                        <select
-                          className="field"
+                        <CustomSelect
                           value={announcementForm.teamId}
-                          onChange={(event) => setAnnouncementForm((current) => ({ ...current, teamId: event.target.value }))}
-                        >
-                          <option value="">Pilih tim dari hasil pencarian</option>
-                          {announcementTeams.map((team) => (
-                            <option key={team.id} value={team.id}>
-                              {team.name} - {team.categoryName} - {team.institution}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(value) => setAnnouncementForm((current) => ({ ...current, teamId: value }))}
+                          placeholder={announcementTeamSearch && !announcementTeams.length ? "Tidak ada tim sesuai pencarian" : "Pilih tim dari hasil pencarian"}
+                          disabled={!announcementTeams.length}
+                          options={announcementTeams.map((team) => ({
+                            value: team.id,
+                            label: team.name,
+                            description: `${team.categoryName} - ${team.institution}`
+                          }))}
+                        />
                       </div>
                       {selectedAnnouncementTeam ? (
                         <div className="mt-3 grid gap-3 rounded-md border border-lagoon/20 bg-lagoon/5 p-3 text-sm md:grid-cols-3">
