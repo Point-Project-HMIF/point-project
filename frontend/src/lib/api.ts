@@ -26,6 +26,7 @@ import type {
 } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api";
+const API_ORIGIN = API_URL.replace(/\/api\/?$/, "");
 
 type APIEnvelope<T> = {
   data?: T;
@@ -59,6 +60,29 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string):
 
 export function isNotFoundError(error: unknown) {
   return error instanceof Error && /404|not found/i.test(error.message);
+}
+
+function encodePath(value: string) {
+  return value
+    .split("/")
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+export function resolveFileURL(value: string) {
+  const url = value.trim();
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("/api/files/r2/")) return `${API_ORIGIN}${url}`;
+  if (url.startsWith("r2://")) {
+    const withoutScheme = url.slice("r2://".length);
+    const slashIndex = withoutScheme.indexOf("/");
+    if (slashIndex === -1) return url;
+    const key = withoutScheme.slice(slashIndex + 1);
+    return `${API_URL}/files/r2/${encodePath(key)}`;
+  }
+  return url;
 }
 
 export const api = {

@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Bell, CheckCircle2, ExternalLink, FileUp, RefreshCw, Send, ShieldAlert } from "lucide-react";
 import { SectionHeading, StatusPill } from "../components/Layout";
-import { api } from "../lib/api";
+import { api, resolveFileURL } from "../lib/api";
 import type { ParticipantDashboard, Submission, SubmissionPayload } from "../lib/types";
 
 const submissionFileFields: Array<{
@@ -342,7 +342,7 @@ function SubmissionLinks({ submission }: { submission: Submission }) {
         <a
           key={label}
           className="inline-flex items-center gap-1 rounded-md border border-ink/10 px-2 py-1 text-xs font-black text-lagoon hover:bg-lagoon hover:text-white"
-          href={url}
+          href={resolveFileURL(url)}
           target="_blank"
           rel="noreferrer"
         >

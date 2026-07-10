@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"log"
 	"math/big"
 	"mime/multipart"
@@ -50,6 +51,13 @@ type resendRegistrationMailer struct {
 
 type submissionFileStorage interface {
 	UploadSubmissionFile(ctx context.Context, team models.Team, stage, field string, header *multipart.FileHeader) (string, error)
+	DownloadSubmissionFile(ctx context.Context, key string) (submissionFileDownload, error)
+}
+
+type submissionFileDownload struct {
+	Body          io.ReadCloser
+	ContentType   string
+	ContentLength int64
 }
 
 type r2SubmissionFileStorage struct {
@@ -141,7 +149,37 @@ func (s *r2SubmissionFileStorage) UploadSubmissionFile(ctx context.Context, team
 	if s.publicBaseURL != "" {
 		return s.publicBaseURL + "/" + key, nil
 	}
-	return fmt.Sprintf("r2://%s/%s", s.bucket, key), nil
+	return "/api/files/r2/" + key, nil
+}
+
+func (s *r2SubmissionFileStorage) DownloadSubmissionFile(ctx context.Context, key string) (submissionFileDownload, error) {
+	key = strings.Trim(strings.TrimSpace(key), "/")
+	if key == "" || strings.Contains(key, "..") {
+		return submissionFileDownload{}, fmt.Errorf("file tidak valid")
+	}
+	if s.objectPrefix != "" && key != s.objectPrefix && !strings.HasPrefix(key, s.objectPrefix+"/") {
+		return submissionFileDownload{}, fmt.Errorf("file di luar folder upload")
+	}
+	object, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return submissionFileDownload{}, err
+	}
+	contentType := aws.ToString(object.ContentType)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	var contentLength int64
+	if object.ContentLength != nil {
+		contentLength = *object.ContentLength
+	}
+	return submissionFileDownload{
+		Body:          object.Body,
+		ContentType:   contentType,
+		ContentLength: contentLength,
+	}, nil
 }
 
 func cleanFileExt(filename string) string {
@@ -264,6 +302,7 @@ func NewRouter(
 		r.Get("/events/{eventID}/rules", server.eventRules)
 		r.Get("/events/{eventID}/faqs", server.listFAQs)
 		r.Get("/events/{eventID}/announcements", server.listAnnouncements)
+		r.Get("/files/r2/*", server.downloadR2File)
 		r.Post("/registrations/otp", server.requestRegistrationOTP)
 		r.Post("/registrations", server.createRegistration)
 		r.Get("/participants/{teamID}/dashboard", server.participantDashboard)
@@ -447,6 +486,29 @@ func (s *Server) participantDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, dashboard)
+}
+
+func (s *Server) downloadR2File(w http.ResponseWriter, r *http.Request) {
+	if s.files == nil {
+		writeMessage(w, http.StatusServiceUnavailable, "penyimpanan file R2 belum dikonfigurasi")
+		return
+	}
+	key := strings.Trim(chi.URLParam(r, "*"), "/")
+	file, err := s.files.DownloadSubmissionFile(r.Context(), key)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	defer file.Body.Close()
+
+	w.Header().Set("Content-Type", file.ContentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filepath.Base(key)))
+	if file.ContentLength > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(file.ContentLength, 10))
+	}
+	if _, err := io.Copy(w, file.Body); err != nil {
+		log.Printf("download r2 file %s: %v", key, err)
+	}
 }
 
 func (s *Server) createSubmission(w http.ResponseWriter, r *http.Request) {
