@@ -26,7 +26,7 @@ import type {
 } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api";
-const API_ORIGIN = API_URL.replace(/\/api\/?$/, "");
+const FILE_CDN_URL = (import.meta.env.VITE_FILE_CDN_URL ?? "https://cdn.pointproject.web.id").replace(/\/+$/, "");
 
 type APIEnvelope<T> = {
   data?: T;
@@ -73,15 +73,18 @@ function encodePath(value: string) {
 export function resolveFileURL(value: string) {
   const url = value.trim();
   if (!url) return "";
-  if (/^https?:\/\//i.test(url)) return url;
-  if (url.startsWith("/api/files/r2/")) return `${API_ORIGIN}${url}`;
+  const apiFileIndex = url.indexOf("/api/files/r2/");
+  if (apiFileIndex >= 0) {
+    return `${FILE_CDN_URL}/${encodePath(url.slice(apiFileIndex + "/api/files/r2/".length))}`;
+  }
   if (url.startsWith("r2://")) {
     const withoutScheme = url.slice("r2://".length);
     const slashIndex = withoutScheme.indexOf("/");
     if (slashIndex === -1) return url;
     const key = withoutScheme.slice(slashIndex + 1);
-    return `${API_URL}/files/r2/${encodePath(key)}`;
+    return `${FILE_CDN_URL}/${encodePath(key)}`;
   }
+  if (/^https?:\/\//i.test(url)) return url;
   return url;
 }
 

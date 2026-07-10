@@ -38,7 +38,7 @@ func Load() Config {
 		R2Bucket:           os.Getenv("R2_BUCKET"),
 		R2AccessKeyID:      os.Getenv("R2_ACCESS_KEY_ID"),
 		R2SecretAccessKey:  os.Getenv("R2_SECRET_ACCESS_KEY"),
-		R2PublicBaseURL:    os.Getenv("R2_PUBLIC_BASE_URL"),
+		R2PublicBaseURL:    env("R2_PUBLIC_BASE_URL", "https://cdn.pointproject.web.id"),
 		R2ObjectPrefix:     env("R2_OBJECT_PREFIX", env("R2_FOLDER_PREFIX", "pp")),
 	}
 }
