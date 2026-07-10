@@ -5,18 +5,17 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#101827",
-        lagoon: "#0f766e",
-        mint: "#8fd694",
-        coral: "#ef6f6c",
-        sun: "#f5b84b",
-        cloud: "#f7faf9"
+        ink: "#061b33",
+        lagoon: "#006fae",
+        mint: "#5fd4cf",
+        coral: "#f47b20",
+        sun: "#ffc94a",
+        cloud: "#f3f7fb"
       },
       boxShadow: {
-        soft: "0 18px 50px rgba(16, 24, 39, 0.10)"
+        soft: "0 14px 34px rgba(6, 27, 51, 0.08)"
       }
     }
   },
   plugins: []
 } satisfies Config;
-

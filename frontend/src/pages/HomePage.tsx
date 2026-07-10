@@ -73,36 +73,36 @@ export function HomePage() {
         <img
           src="/point-project-hero.png"
           alt={`Ilustrasi kompetisi UI/UX ${eventName}`}
-          className="absolute inset-0 h-full w-full object-cover opacity-[0.58]"
+          className="absolute inset-0 h-full w-full object-cover opacity-40"
         />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(16,24,39,0.96)_0%,rgba(16,24,39,0.78)_42%,rgba(16,24,39,0.18)_100%)]" />
-        <div className="relative mx-auto grid min-h-[82vh] max-w-7xl content-center px-4 py-20 sm:px-6 lg:px-8">
-          <div className="max-w-3xl">
+        <div className="absolute inset-0 bg-ink/82" />
+        <div className="relative mx-auto grid min-h-[76vh] max-w-7xl content-center px-4 py-20 sm:px-6 lg:px-8">
+          <div className="max-w-4xl">
             <StatusPill tone="amber">Kompetisi UI/UX Nasional</StatusPill>
-            <h1 className="mt-6 text-5xl font-black leading-tight sm:text-6xl lg:text-7xl">
+            <h1 className="mt-6 max-w-3xl text-4xl font-black leading-tight sm:text-5xl lg:text-6xl">
               {eventName}
             </h1>
-            <p className="mt-5 max-w-2xl text-lg leading-8 text-white/84">
+            <p className="mt-5 max-w-2xl text-base leading-8 text-white/80 sm:text-lg">
               {event?.theme ?? "Data event sedang dimuat dari database."}
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link to="/daftar" className="btn-primary bg-mint text-ink hover:bg-emerald-300">
+              <Link to="/daftar" className="btn-primary bg-coral text-white hover:bg-orange-600">
                 Daftar Sekarang
                 <ArrowRight size={18} />
               </Link>
-              <Link to="/pengumuman" className="btn-secondary border-white/30 bg-white/10 text-white hover:bg-white hover:text-ink">
+              <Link to="/pengumuman" className="btn-secondary border-white/30 bg-white/10 text-white hover:bg-white hover:text-lagoon">
                 Lihat Pengumuman
               </Link>
             </div>
-            <div className="mt-10 grid max-w-2xl gap-3 sm:grid-cols-3">
+            <div className="mt-10 grid max-w-3xl gap-3 sm:grid-cols-3">
               {[
                 ["2 Kategori", "Siswa dan mahasiswa"],
-                ["Multi-tahun", "Arsip per periode"],
-                ["End-to-end", "Daftar sampai awarding"]
+                ["Tahap Jelas", "Jadwal dan submission terkurasi"],
+                ["Arsip Event", "Data tiap periode tetap tersimpan"]
               ].map(([value, label]) => (
-                <div key={value} className="border-l-2 border-mint pl-4">
-                  <p className="text-2xl font-black">{value}</p>
-                  <p className="text-sm text-white/72">{label}</p>
+                <div key={value} className="border-l-2 border-mint bg-white/10 px-4 py-3">
+                  <p className="text-xl font-black">{value}</p>
+                  <p className="mt-1 text-sm text-white/70">{label}</p>
                 </div>
               ))}
             </div>
@@ -129,7 +129,7 @@ export function HomePage() {
             ].map((item) => {
               const Icon = item.icon;
               return (
-                <article key={item.label} className="card">
+                <article key={item.label} className="card border-l-4 border-l-lagoon">
                   <Icon className="text-lagoon" size={24} />
                   <h3 className="mt-4 font-black">{item.label}</h3>
                   <p className="mt-2 text-sm leading-6 text-ink/65">{item.text}</p>

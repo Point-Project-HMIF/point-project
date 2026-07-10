@@ -7,8 +7,8 @@
 :root {
   font-family:
     "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #101827;
-  background: #f7faf9;
+  color: #061b33;
+  background: #f3f7fb;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -32,12 +32,12 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid rgba(15, 118, 110, 0.35);
+  outline: 3px solid rgba(0, 111, 174, 0.28);
   outline-offset: 2px;
 }
 
 .field {
-  @apply w-full rounded-md border border-ink/15 bg-white px-3 py-2.5 text-sm shadow-sm transition placeholder:text-ink/35 focus:border-lagoon focus:outline-none;
+  @apply w-full rounded-md border border-ink/10 bg-white px-3 py-2.5 text-sm shadow-sm transition placeholder:text-ink/35 focus:border-lagoon focus:outline-none;
 }
 
 .label {
@@ -45,11 +45,11 @@ textarea:focus-visible {
 }
 
 .btn-primary {
-  @apply inline-flex items-center justify-center gap-2 rounded-md bg-lagoon px-4 py-2.5 text-sm font-black text-white shadow-soft transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60;
+  @apply inline-flex items-center justify-center gap-2 rounded-md bg-lagoon px-4 py-2.5 text-sm font-black text-white shadow-soft transition hover:bg-[#055c8f] disabled:cursor-not-allowed disabled:opacity-60;
 }
 
 .btn-secondary {
-  @apply inline-flex items-center justify-center gap-2 rounded-md border border-ink/15 bg-white px-4 py-2.5 text-sm font-black text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-60;
+  @apply inline-flex items-center justify-center gap-2 rounded-md border border-lagoon/20 bg-white px-4 py-2.5 text-sm font-black text-ink transition hover:border-lagoon hover:bg-lagoon hover:text-white disabled:cursor-not-allowed disabled:opacity-60;
 }
 
 .card {
