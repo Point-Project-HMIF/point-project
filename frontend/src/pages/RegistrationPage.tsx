@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Send, Trash2, UserPlus } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Lock, Send, Trash2, UserPlus } from "lucide-react";
 import clsx from "clsx";
 import { CustomSelect } from "../components/CustomSelect";
 import { SectionHeading, StatusPill } from "../components/Layout";
@@ -99,36 +99,64 @@ export function RegistrationPage() {
     toastError(message);
   }
 
-  function goNext() {
-    setError("");
-    if (step === 0) {
+  function getStepError(stepIndex: number) {
+    if (stepIndex === 0) {
       if (!form.name || !form.leaderName || !form.leaderEmail || !form.leaderPhone || !form.institution) {
-        showError("Data tim, ketua, email, WhatsApp, dan asal instansi wajib diisi.");
-        return;
+        return "Data tim, ketua, email, WhatsApp, dan asal instansi wajib diisi.";
       }
       if (!isValidWhatsAppNumber(form.leaderPhone)) {
-        showError("Nomor WhatsApp tidak valid. Gunakan format 08xxxxxxxxxx atau +628xxxxxxxxxx.");
-        return;
+        return "Nomor WhatsApp tidak valid. Gunakan format 08xxxxxxxxxx atau +628xxxxxxxxxx.";
       }
     }
-    if (step === 1) {
+    if (stepIndex === 1) {
       if (totalMembers < rules.minTeamMembers) {
-        showError(`Minimal ${rules.minTeamMembers} peserta termasuk ketua wajib diisi.`);
-        return;
+        return `Minimal ${rules.minTeamMembers} peserta termasuk ketua wajib diisi.`;
       }
       const invalidMember = members.some((member) => member.name.trim() || member.email.trim() || member.role.trim()
         ? !member.name.trim() || !member.email.trim() || !member.role.trim()
         : false);
       if (invalidMember) {
-        showError("Setiap slot anggota yang diisi wajib lengkap: nama, email, dan peran.");
+        return "Setiap slot anggota yang diisi wajib lengkap: nama, email, dan peran.";
+      }
+    }
+    if (stepIndex === 2 && (!form.categoryId || !form.batch)) {
+      return "Batch dan kategori lomba wajib dipilih.";
+    }
+    return "";
+  }
+
+  function canOpenStep(stepIndex: number) {
+    if (stepIndex <= step) return true;
+    for (let index = 0; index < stepIndex; index += 1) {
+      if (getStepError(index)) return false;
+    }
+    return true;
+  }
+
+  function openStep(stepIndex: number) {
+    if (stepIndex <= step) {
+      setStep(stepIndex);
+      return;
+    }
+    for (let index = 0; index < stepIndex; index += 1) {
+      const message = getStepError(index);
+      if (message) {
+        showError(message);
+        setStep(index);
         return;
       }
     }
-    if (step === 2 && (!form.categoryId || !form.batch)) {
-      showError("Batch dan kategori lomba wajib dipilih.");
+    setStep(stepIndex);
+  }
+
+  function goNext() {
+    setError("");
+    const message = getStepError(step);
+    if (message) {
+      showError(message);
       return;
     }
-    setStep((current) => current + 1);
+    setStep((current) => Math.min(current + 1, steps.length - 1));
   }
 
   async function requestOTP() {
@@ -230,27 +258,35 @@ export function RegistrationPage() {
             <StatusPill tone="teal">Batch {form.batch}</StatusPill>
             <h2 className="mt-4 text-xl font-black">Progress Form</h2>
             <div className="mt-5 space-y-3">
-              {steps.map((label, index) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setStep(index)}
-                  className={clsx(
-                    "flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-bold transition",
-                    step === index ? "bg-ink text-white" : "bg-cloud text-ink/70 hover:bg-lagoon/10"
-                  )}
-                >
-                  <span
+              {steps.map((label, index) => {
+                const accessible = canOpenStep(index);
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => openStep(index)}
+                    disabled={!accessible}
+                    aria-disabled={!accessible}
                     className={clsx(
-                      "grid h-7 w-7 shrink-0 place-items-center rounded-md text-xs",
-                      step === index ? "bg-mint text-ink" : "bg-white text-ink"
+                      "flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-bold transition",
+                      step === index && "bg-ink text-white",
+                      step !== index && accessible && "bg-cloud text-ink/70 hover:bg-lagoon/10",
+                      !accessible && "cursor-not-allowed bg-cloud text-ink/35"
                     )}
                   >
-                    {index + 1}
-                  </span>
-                  {label}
-                </button>
-              ))}
+                    <span
+                      className={clsx(
+                        "grid h-7 w-7 shrink-0 place-items-center rounded-md text-xs",
+                        step === index ? "bg-mint text-ink" : "bg-white text-ink",
+                        !accessible && "text-ink/35"
+                      )}
+                    >
+                      {accessible ? index + 1 : <Lock size={14} />}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{label}</span>
+                  </button>
+                );
+              })}
             </div>
           </aside>
 
