@@ -73,6 +73,18 @@ export type EventRulesPayload = {
   maxTeamMembers: number;
 };
 
+export type EventPaymentSettings = {
+  eventId: string;
+  amount: number;
+  isEnabled: boolean;
+  updatedAt: string;
+};
+
+export type EventPaymentSettingsPayload = {
+  amount: number;
+  isEnabled: boolean;
+};
+
 export type SubmissionStage = {
   id: string;
   eventId: string;
@@ -261,6 +273,38 @@ export type CreateAdminUserPayload = {
   role: string;
   division: string;
   password: string;
+};
+
+export type AdminRedeemCode = {
+  id: string;
+  code: string;
+  claimUrl: string;
+  role: string;
+  division: string;
+  maxClaims: number;
+  claimedCount: number;
+  status: string;
+  expiresAt: string;
+  createdBy: string;
+  createdAt: string;
+};
+
+export type CreateAdminRedeemCodePayload = {
+  role: string;
+  division: string;
+  maxClaims: number;
+  expiresAt: string;
+};
+
+export type ClaimAdminRedeemPayload = {
+  name: string;
+  email: string;
+};
+
+export type ClaimAdminRedeemResponse = {
+  user: AdminUser;
+  initialPassword: string;
+  message: string;
 };
 
 export type AdminStats = {

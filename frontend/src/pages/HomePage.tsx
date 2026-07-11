@@ -33,6 +33,7 @@ export function HomePage() {
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [rules, setRules] = useState<EventRules | null>(null);
   const [heroDarkProgress, setHeroDarkProgress] = useState(0);
+  const [cubeLightProgress, setCubeLightProgress] = useState(0);
   const [heroExitProgress, setHeroExitProgress] = useState(0);
 
   useEffect(() => {
@@ -91,9 +92,11 @@ export function HomePage() {
       const rect = target.getBoundingClientRect();
       const travel = Math.max(1, rect.height - window.innerHeight);
       const progress = Math.min(1, Math.max(0, -rect.top / travel));
-      const nextDark = Math.min(1, Math.max(0, (progress - 0.16) / 0.08));
-      const nextExit = Math.min(1, Math.max(0, (progress - 0.92) / 0.08));
+      const nextDark = progress >= 0.25 && progress < 0.93 ? 1 : 0;
+      const nextCubeLight = nextDark ? Math.min(1, Math.max(0, (progress - 0.23) / 0.12)) : 0;
+      const nextExit = progress >= 0.93 ? 1 : 0;
       setHeroDarkProgress(nextDark);
+      setCubeLightProgress(nextCubeLight);
       setHeroExitProgress(nextExit);
     };
     const schedule = () => {
@@ -129,12 +132,12 @@ export function HomePage() {
           "--hero-dark-progress": heroDarkProgress,
           "--hero-exit-progress": heroExitProgress,
           "--hero-visible-progress": heroVisibleProgress,
-          "--hero-soft-progress": heroVisibleProgress * 0.92,
+          "--hero-soft-progress": cubeLightProgress * 0.92,
           "--hero-star-progress": heroVisibleProgress * 0.54
         } as CSSProperties
       }
     >
-      <section id="rubik-scroll-area" className="relative isolate min-h-[310vh] overflow-clip border-b border-dark/10 bg-[#05070d]">
+      <section id="rubik-scroll-area" className="relative isolate min-h-[430vh] overflow-clip border-b border-dark/10 bg-[#05070d]">
         <div className="sticky top-0 h-screen overflow-hidden bg-[#05070d]">
           <div className="absolute inset-0 z-0 bg-white" style={{ opacity: 1 - heroDarkProgress }} aria-hidden="true" />
           <div className="hero-dark-stage absolute inset-0 z-0" aria-hidden="true" />
@@ -186,8 +189,8 @@ export function HomePage() {
                     mengirim karya, mengikuti tahap seleksi, lalu hasil finalis dan pemenang tersimpan sebagai arsip event.
                   </p>
                 </div>
-                <div className="hero-os-box">
-                  <div className="flex items-center justify-between gap-4">
+                <div className="hero-os-list">
+                  <div className="hero-os-list-head">
                     <p className="text-xs font-black uppercase tracking-[0.22em] text-primary">Operating System</p>
                     <span className="text-xs font-black text-dark/45">{event ? event.year : "ACTIVE"}</span>
                   </div>
@@ -207,6 +210,19 @@ export function HomePage() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div
+            className={`hero-phase-boundary mx-auto grid min-h-[96vh] max-w-7xl content-end px-4 pb-24 pt-32 sm:px-6 lg:px-8 ${
+              heroInDarkMode ? "is-dark" : ""
+            }`}
+          >
+            <div className="max-w-5xl scroll-pop" data-scroll-pop>
+              <p className="text-xs font-black uppercase tracking-[0.24em] text-primary">Competition Runtime</p>
+              <h2 className="mt-5 font-display text-5xl font-black uppercase leading-[0.88] tracking-[-0.055em] text-[#05070d] sm:text-7xl lg:text-8xl">
+                Alur kompetisi bergerak dari ide, validasi, sampai publikasi.
+              </h2>
             </div>
           </div>
 

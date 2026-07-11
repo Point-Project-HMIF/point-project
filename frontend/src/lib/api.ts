@@ -1,11 +1,17 @@
 import type {
   AdminStats,
+  AdminRedeemCode,
   AdminUser,
   Announcement,
   Category,
+  ClaimAdminRedeemPayload,
+  ClaimAdminRedeemResponse,
   CommitteeMember,
+  CreateAdminRedeemCodePayload,
   CreateAdminUserPayload,
   Event,
+  EventPaymentSettings,
+  EventPaymentSettingsPayload,
   FAQ,
   FAQPayload,
   EventRules,
@@ -160,6 +166,14 @@ export const api = {
     ),
   updateRules: (token: string, eventId: string, payload: EventRulesPayload) =>
     request<EventRules>(`/admin/events/${eventId}/rules`, { method: "PUT", body: JSON.stringify(payload) }, token),
+  paymentSettings: (token: string, eventId: string) =>
+    request<EventPaymentSettings>(`/admin/events/${eventId}/payment-settings`, {}, token),
+  updatePaymentSettings: (token: string, eventId: string, payload: EventPaymentSettingsPayload) =>
+    request<EventPaymentSettings>(
+      `/admin/events/${eventId}/payment-settings`,
+      { method: "PUT", body: JSON.stringify(payload) },
+      token
+    ),
   submissionStages: (token: string, eventId: string) =>
     request<SubmissionStage[]>(`/admin/events/${eventId}/submission-stages`, {}, token),
   updateSubmissionStages: (token: string, eventId: string, items: SubmissionStageInput[]) =>
@@ -189,5 +203,13 @@ export const api = {
     request<Announcement>("/admin/announcements", { method: "POST", body: JSON.stringify(payload) }, token),
   adminUsers: (token: string) => request<AdminUser[]>("/admin/users", {}, token),
   createAdminUser: (token: string, payload: CreateAdminUserPayload) =>
-    request<AdminUser>("/admin/users", { method: "POST", body: JSON.stringify(payload) }, token)
+    request<AdminUser>("/admin/users", { method: "POST", body: JSON.stringify(payload) }, token),
+  adminRedeemCodes: (token: string) => request<AdminRedeemCode[]>("/admin/redeem-codes", {}, token),
+  createAdminRedeemCode: (token: string, payload: CreateAdminRedeemCodePayload) =>
+    request<AdminRedeemCode>("/admin/redeem-codes", { method: "POST", body: JSON.stringify(payload) }, token),
+  claimAdminRedeem: (code: string, payload: ClaimAdminRedeemPayload) =>
+    request<ClaimAdminRedeemResponse>(
+      `/admin/redeem/${encodeURIComponent(code)}/claim`,
+      { method: "POST", body: JSON.stringify(payload) }
+    )
 };

@@ -81,6 +81,18 @@ type EventRulesRequest struct {
 	MaxTeamMembers int `json:"maxTeamMembers"`
 }
 
+type EventPaymentSettings struct {
+	EventID   string `json:"eventId"`
+	Amount    int    `json:"amount"`
+	IsEnabled bool   `json:"isEnabled"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+type EventPaymentSettingsRequest struct {
+	Amount    int  `json:"amount"`
+	IsEnabled bool `json:"isEnabled"`
+}
+
 type SubmissionStage struct {
 	ID               string `json:"id"`
 	EventID          string `json:"eventId"`
@@ -350,4 +362,36 @@ type CreateAdminUserRequest struct {
 	Role     string `json:"role"`
 	Division string `json:"division"`
 	Password string `json:"password"`
+}
+
+type AdminRedeemCode struct {
+	ID           string `json:"id"`
+	Code         string `json:"code"`
+	ClaimURL     string `json:"claimUrl"`
+	Role         string `json:"role"`
+	Division     string `json:"division"`
+	MaxClaims    int    `json:"maxClaims"`
+	ClaimedCount int    `json:"claimedCount"`
+	Status       string `json:"status"`
+	ExpiresAt    string `json:"expiresAt"`
+	CreatedBy    string `json:"createdBy"`
+	CreatedAt    string `json:"createdAt"`
+}
+
+type CreateAdminRedeemCodeRequest struct {
+	Role      string `json:"role"`
+	Division  string `json:"division"`
+	MaxClaims int    `json:"maxClaims"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+type ClaimAdminRedeemRequest struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+type ClaimAdminRedeemResponse struct {
+	User            AdminUser `json:"user"`
+	InitialPassword string    `json:"initialPassword"`
+	Message         string    `json:"message"`
 }

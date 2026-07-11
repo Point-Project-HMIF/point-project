@@ -61,21 +61,21 @@ func newPakasirClient(slug, apiKey string, amount int) *pakasirClient {
 }
 
 func (c *pakasirClient) Configured() bool {
-	return c != nil && c.slug != "" && c.apiKey != "" && c.amount > 0
+	return c != nil && c.slug != "" && c.apiKey != ""
 }
 
-func (c *pakasirClient) PaymentURL(orderID string) string {
+func (c *pakasirClient) PaymentURL(orderID string, amount int) string {
 	query := url.Values{}
 	query.Set("order_id", orderID)
 	query.Set("qris_only", "1")
-	return fmt.Sprintf("https://app.pakasir.com/pay/%s/%d?%s", url.PathEscape(c.slug), c.amount, query.Encode())
+	return fmt.Sprintf("https://app.pakasir.com/pay/%s/%d?%s", url.PathEscape(c.slug), amount, query.Encode())
 }
 
-func (c *pakasirClient) CreateQRIS(ctx context.Context, orderID string) (pakasirPayment, error) {
+func (c *pakasirClient) CreateQRIS(ctx context.Context, orderID string, amount int) (pakasirPayment, error) {
 	payload := map[string]any{
 		"project":  c.slug,
 		"order_id": orderID,
-		"amount":   c.amount,
+		"amount":   amount,
 		"api_key":  c.apiKey,
 	}
 	body, err := json.Marshal(payload)
@@ -135,7 +135,7 @@ func (c *pakasirClient) Detail(ctx context.Context, orderID string, amount int) 
 
 func (s *Server) createRegistrationPayment(w http.ResponseWriter, r *http.Request) {
 	if s.pakasir == nil || !s.pakasir.Configured() {
-		writeMessage(w, http.StatusServiceUnavailable, "Pakasir belum dikonfigurasi. Isi PAKASIR_SLUG, PAKASIR_API_KEY, dan PAKASIR_AMOUNT.")
+		writeMessage(w, http.StatusServiceUnavailable, "Pakasir belum dikonfigurasi. Isi PAKASIR_SLUG dan PAKASIR_API_KEY.")
 		return
 	}
 	var input models.RegistrationPaymentRequest
@@ -166,12 +166,25 @@ func (s *Server) createRegistrationPayment(w http.ResponseWriter, r *http.Reques
 		writeMessage(w, http.StatusConflict, "email ini sudah terdaftar sebagai peserta pada event ini")
 		return
 	}
+	settings, err := s.store.GetEventPaymentSettings(r.Context(), eventID, s.pakasirFallbackAmount())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if !settings.IsEnabled {
+		writeMessage(w, http.StatusServiceUnavailable, "pembayaran pendaftaran sedang dinonaktifkan")
+		return
+	}
+	if settings.Amount <= 0 {
+		writeMessage(w, http.StatusServiceUnavailable, "harga pendaftaran belum diatur oleh super admin")
+		return
+	}
 	orderID, err := generatePakasirOrderID()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	pakasirPayment, err := s.pakasir.CreateQRIS(r.Context(), orderID)
+	pakasirPayment, err := s.pakasir.CreateQRIS(r.Context(), orderID, settings.Amount)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -194,7 +207,7 @@ func (s *Server) createRegistrationPayment(w http.ResponseWriter, r *http.Reques
 		TotalPayment:  totalPayment,
 		PaymentMethod: "qris",
 		PaymentNumber: pakasirPayment.PaymentNumber,
-		PaymentURL:    s.pakasir.PaymentURL(orderID),
+		PaymentURL:    s.pakasir.PaymentURL(orderID, amount),
 		Status:        "pending",
 		ExpiredAt:     pakasirPayment.ExpiredAt,
 	})
@@ -255,6 +268,13 @@ func (s *Server) checkRegistrationPayment(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeData(w, http.StatusOK, updated)
+}
+
+func (s *Server) pakasirFallbackAmount() int {
+	if s.pakasir == nil {
+		return 0
+	}
+	return s.pakasir.amount
 }
 
 func (s *Server) resolveRegistrationEventID(ctx context.Context, eventID string) (string, error) {

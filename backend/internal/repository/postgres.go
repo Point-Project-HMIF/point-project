@@ -2,9 +2,11 @@ package repository
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -299,6 +301,52 @@ func (s *PostgresStore) UpdateEventRules(ctx context.Context, eventID string, in
 		return models.EventRules{}, err
 	}
 	return rules, nil
+}
+
+func (s *PostgresStore) GetEventPaymentSettings(ctx context.Context, eventID string, fallbackAmount int) (models.EventPaymentSettings, error) {
+	var settings models.EventPaymentSettings
+	err := s.db.QueryRow(ctx, `
+		select event_id::text, amount, is_enabled, to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+		from event_payment_settings
+		where event_id = $1
+	`, eventID).Scan(&settings.EventID, &settings.Amount, &settings.IsEnabled, &settings.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if fallbackAmount < 0 {
+			fallbackAmount = 0
+		}
+		return s.UpdateEventPaymentSettings(ctx, eventID, models.EventPaymentSettingsRequest{
+			Amount:    fallbackAmount,
+			IsEnabled: true,
+		})
+	}
+	if err != nil {
+		return models.EventPaymentSettings{}, err
+	}
+	return settings, nil
+}
+
+func (s *PostgresStore) UpdateEventPaymentSettings(ctx context.Context, eventID string, input models.EventPaymentSettingsRequest) (models.EventPaymentSettings, error) {
+	if input.Amount < 0 {
+		return models.EventPaymentSettings{}, errors.New("harga pembayaran tidak boleh negatif")
+	}
+	var settings models.EventPaymentSettings
+	if err := s.db.QueryRow(ctx, `
+		insert into event_payment_settings (event_id, amount, is_enabled, updated_at)
+		values ($1, $2, $3, now())
+		on conflict (event_id) do update
+		set amount = excluded.amount,
+		    is_enabled = excluded.is_enabled,
+		    updated_at = now()
+		returning event_id::text, amount, is_enabled, to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+	`, eventID, input.Amount, input.IsEnabled).Scan(
+		&settings.EventID,
+		&settings.Amount,
+		&settings.IsEnabled,
+		&settings.UpdatedAt,
+	); err != nil {
+		return models.EventPaymentSettings{}, err
+	}
+	return settings, nil
 }
 
 func (s *PostgresStore) ListSubmissionStages(ctx context.Context, eventID string) ([]models.SubmissionStage, error) {
@@ -1641,6 +1689,190 @@ func (s *PostgresStore) CreateAdminUser(ctx context.Context, input models.Create
 	return user, nil
 }
 
+func (s *PostgresStore) ListAdminRedeemCodes(ctx context.Context) ([]models.AdminRedeemCode, error) {
+	rows, err := s.db.Query(ctx, `
+		select id::text, code, role, division, max_claims, claimed_count, status,
+		       coalesce(to_char(expires_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), ''),
+		       coalesce(created_by::text, ''),
+		       to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+		from admin_redeem_codes
+		order by created_at desc
+		limit 50
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	codes := make([]models.AdminRedeemCode, 0)
+	for rows.Next() {
+		code, err := scanAdminRedeemCode(rows)
+		if err != nil {
+			return nil, err
+		}
+		codes = append(codes, code)
+	}
+	return codes, rows.Err()
+}
+
+func (s *PostgresStore) CreateAdminRedeemCode(ctx context.Context, input models.CreateAdminRedeemCodeRequest, createdBy string, claimBaseURL string) (models.AdminRedeemCode, error) {
+	role := strings.TrimSpace(input.Role)
+	if role == "" {
+		role = "panitia"
+	}
+	if role != "panitia" && role != "admin" && role != "juri" {
+		return models.AdminRedeemCode{}, errors.New("role redeem tidak valid")
+	}
+	maxClaims := input.MaxClaims
+	if maxClaims <= 0 {
+		maxClaims = 1
+	}
+	code, err := generateRedeemCode()
+	if err != nil {
+		return models.AdminRedeemCode{}, err
+	}
+	var redeem models.AdminRedeemCode
+	err = s.db.QueryRow(ctx, `
+		insert into admin_redeem_codes (code, created_by, role, division, max_claims, expires_at)
+		values ($1, nullif($2, '')::uuid, $3, $4, $5, nullif($6, '')::timestamptz)
+		returning id::text, code, role, division, max_claims, claimed_count, status,
+		          coalesce(to_char(expires_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), ''),
+		          coalesce(created_by::text, ''),
+		          to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+	`, code, strings.TrimSpace(createdBy), role, strings.TrimSpace(input.Division), maxClaims, strings.TrimSpace(input.ExpiresAt)).Scan(
+		&redeem.ID,
+		&redeem.Code,
+		&redeem.Role,
+		&redeem.Division,
+		&redeem.MaxClaims,
+		&redeem.ClaimedCount,
+		&redeem.Status,
+		&redeem.ExpiresAt,
+		&redeem.CreatedBy,
+		&redeem.CreatedAt,
+	)
+	if err != nil {
+		return models.AdminRedeemCode{}, err
+	}
+	redeem.ClaimURL = redeemClaimURL(claimBaseURL, redeem.Code)
+	return redeem, nil
+}
+
+func (s *PostgresStore) ClaimAdminRedeemCode(ctx context.Context, code string, input models.ClaimAdminRedeemRequest, claimBaseURL string) (models.ClaimAdminRedeemResponse, error) {
+	name := strings.TrimSpace(input.Name)
+	email, nim, err := normalizeIteraStudentEmail(input.Email)
+	if err != nil {
+		return models.ClaimAdminRedeemResponse{}, err
+	}
+	if name == "" {
+		return models.ClaimAdminRedeemResponse{}, errors.New("nama wajib diisi")
+	}
+	if len([]rune(name)) < 3 {
+		return models.ClaimAdminRedeemResponse{}, errors.New("nama terlalu pendek")
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return models.ClaimAdminRedeemResponse{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var redeem models.AdminRedeemCode
+	err = tx.QueryRow(ctx, `
+		select id::text, code, role, division, max_claims, claimed_count, status,
+		       coalesce(to_char(expires_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), ''),
+		       coalesce(created_by::text, ''),
+		       to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+		from admin_redeem_codes
+		where lower(code) = lower($1)
+		for update
+	`, strings.TrimSpace(code)).Scan(
+		&redeem.ID,
+		&redeem.Code,
+		&redeem.Role,
+		&redeem.Division,
+		&redeem.MaxClaims,
+		&redeem.ClaimedCount,
+		&redeem.Status,
+		&redeem.ExpiresAt,
+		&redeem.CreatedBy,
+		&redeem.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.ClaimAdminRedeemResponse{}, errors.New("kode redeem tidak ditemukan")
+	}
+	if err != nil {
+		return models.ClaimAdminRedeemResponse{}, err
+	}
+	if redeem.Status != "active" {
+		return models.ClaimAdminRedeemResponse{}, errors.New("kode redeem sudah tidak aktif")
+	}
+	if redeem.ExpiresAt != "" {
+		expiresAt, parseErr := time.Parse(time.RFC3339, redeem.ExpiresAt)
+		if parseErr == nil && time.Now().After(expiresAt) {
+			_, _ = tx.Exec(ctx, `update admin_redeem_codes set status = 'expired', updated_at = now() where id = $1`, redeem.ID)
+			return models.ClaimAdminRedeemResponse{}, errors.New("kode redeem sudah kedaluwarsa")
+		}
+	}
+	if redeem.ClaimedCount >= redeem.MaxClaims {
+		_, _ = tx.Exec(ctx, `update admin_redeem_codes set status = 'claimed', updated_at = now() where id = $1`, redeem.ID)
+		return models.ClaimAdminRedeemResponse{}, errors.New("kode redeem sudah mencapai batas klaim")
+	}
+
+	var existing bool
+	if err := tx.QueryRow(ctx, `select exists(select 1 from admin_users where lower(email) = lower($1))`, email).Scan(&existing); err != nil {
+		return models.ClaimAdminRedeemResponse{}, err
+	}
+	if existing {
+		return models.ClaimAdminRedeemResponse{}, errors.New("email ini sudah memiliki akun admin/panitia")
+	}
+
+	password := nim
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return models.ClaimAdminRedeemResponse{}, err
+	}
+	var user models.AdminUser
+	if err := tx.QueryRow(ctx, `
+		insert into admin_users (name, nim, email, password_hash, role, division)
+		values ($1, $2, $3, $4, $5, $6)
+		returning id::text, name, coalesce(nim, ''), email, role, division
+	`, name, nim, email, string(hash), redeem.Role, redeem.Division).Scan(
+		&user.ID,
+		&user.Name,
+		&user.NIM,
+		&user.Email,
+		&user.Role,
+		&user.Division,
+	); err != nil {
+		return models.ClaimAdminRedeemResponse{}, err
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into admin_redeem_claims (code_id, admin_user_id, name, email)
+		values ($1, $2, $3, $4)
+	`, redeem.ID, user.ID, name, email); err != nil {
+		return models.ClaimAdminRedeemResponse{}, err
+	}
+	if _, err := tx.Exec(ctx, `
+		update admin_redeem_codes
+		set claimed_count = claimed_count + 1,
+		    status = case when claimed_count + 1 >= max_claims then 'claimed' else status end,
+		    updated_at = now()
+		where id = $1
+	`, redeem.ID); err != nil {
+		return models.ClaimAdminRedeemResponse{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return models.ClaimAdminRedeemResponse{}, err
+	}
+
+	return models.ClaimAdminRedeemResponse{
+		User:            user,
+		InitialPassword: password,
+		Message:         "Akun panitia berhasil dibuat. Gunakan email ITERA dan password awal NIM untuk login.",
+	}, nil
+}
+
 func adminStudentEmail(name, nim string) string {
 	var builder strings.Builder
 	lastDot := false
@@ -1659,6 +1891,69 @@ func adminStudentEmail(name, nim string) string {
 		localName = "panitia"
 	}
 	return fmt.Sprintf("%s.%s@student.itera.ac.id", localName, digitsOnly(nim))
+}
+
+func generateRedeemCode() (string, error) {
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	var builder strings.Builder
+	builder.WriteString("PP-")
+	for i := 0; i < 10; i++ {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
+		if err != nil {
+			return "", err
+		}
+		builder.WriteByte(alphabet[n.Int64()])
+		if i == 4 {
+			builder.WriteByte('-')
+		}
+	}
+	return builder.String(), nil
+}
+
+func scanAdminRedeemCode(row pgx.Row) (models.AdminRedeemCode, error) {
+	var redeem models.AdminRedeemCode
+	err := row.Scan(
+		&redeem.ID,
+		&redeem.Code,
+		&redeem.Role,
+		&redeem.Division,
+		&redeem.MaxClaims,
+		&redeem.ClaimedCount,
+		&redeem.Status,
+		&redeem.ExpiresAt,
+		&redeem.CreatedBy,
+		&redeem.CreatedAt,
+	)
+	return redeem, err
+}
+
+func redeemClaimURL(baseURL, code string) string {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "" {
+		return "/claim-redeem/" + code
+	}
+	return baseURL + "/claim-redeem/" + code
+}
+
+func normalizeIteraStudentEmail(value string) (string, string, error) {
+	email := strings.ToLower(strings.TrimSpace(value))
+	address, err := mail.ParseAddress(email)
+	if err != nil || strings.ToLower(address.Address) != email {
+		return "", "", errors.New("format email ITERA tidak valid")
+	}
+	if !strings.HasSuffix(email, "@student.itera.ac.id") {
+		return "", "", errors.New("email wajib menggunakan domain @student.itera.ac.id")
+	}
+	local := strings.TrimSuffix(email, "@student.itera.ac.id")
+	parts := strings.Split(local, ".")
+	if len(parts) < 2 {
+		return "", "", errors.New("format email harus memuat nama dan NIM")
+	}
+	nim := digitsOnly(parts[len(parts)-1])
+	if len(nim) < 6 {
+		return "", "", errors.New("NIM tidak terbaca dari email ITERA")
+	}
+	return email, nim, nil
 }
 
 func digitsOnly(value string) string {

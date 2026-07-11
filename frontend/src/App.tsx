@@ -3,6 +3,7 @@ import { Layout } from "./components/Layout";
 import { AdminPanel } from "./pages/AdminPanel";
 import { AnnouncementDetailPage } from "./pages/AnnouncementDetailPage";
 import { AnnouncementsPage } from "./pages/AnnouncementsPage";
+import { ClaimRedeemPage } from "./pages/ClaimRedeemPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { HomePage } from "./pages/HomePage";
 import { RegistrationPage } from "./pages/RegistrationPage";
@@ -19,7 +20,8 @@ export default function App() {
         <Route path="/pengumuman" element={<AnnouncementsPage />} />
         <Route path="/pengumuman/:eventId/berita/:announcementId" element={<AnnouncementDetailPage />} />
         <Route path="/pengumuman/:eventId/:teamSlug" element={<WinnerDetailPage />} />
-        	<Route path="/X7pQm2Kf9vLzR4tN8wYbC1hJ6sD3aG5e" element={<AdminPanel />} />
+        <Route path="/claim-redeem/:code" element={<ClaimRedeemPage />} />
+        <Route path="/X7pQm2Kf9vLzR4tN8wYbC1hJ6sD3aG5e" element={<AdminPanel />} />
       </Routes>
     </Layout>
   );

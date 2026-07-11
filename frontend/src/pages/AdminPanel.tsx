@@ -4,15 +4,19 @@ import {
   CalendarClock,
   CheckCircle2,
   ClipboardList,
+  Copy,
+  CreditCard,
   FileSpreadsheet,
   HelpCircle,
   ImagePlus,
+  Link as LinkIcon,
   LayoutGrid,
   Lock,
   LogIn,
   Megaphone,
   Plus,
   Power,
+  QrCode,
   RefreshCw,
   Save,
   Search,
@@ -30,12 +34,15 @@ import { SectionHeading, StatusPill } from "../components/Layout";
 import { api, isNotFoundError } from "../lib/api";
 import { toastError, toastSuccess } from "../lib/toast";
 import type {
+  AdminRedeemCode,
   AdminStats,
   AdminUser,
   AnnouncementResult,
   CommitteeMember,
+  CreateAdminRedeemCodePayload,
   CreateAdminUserPayload,
   Event,
+  EventPaymentSettings,
   EventRules,
   FAQ,
   FAQPayload,
@@ -46,7 +53,7 @@ import type {
   TimelineItemInput
 } from "../lib/types";
 
-type Tab = "overview" | "event-switch" | "event" | "peserta" | "panitia" | "jadwal" | "submission" | "faq" | "pengumuman" | "akun";
+type Tab = "overview" | "event-switch" | "event" | "payment" | "peserta" | "panitia" | "jadwal" | "submission" | "faq" | "pengumuman" | "akun";
 type EventAction = { type: "lock" | "activate"; event: Event } | null;
 
 const emptyStats: AdminStats = {
@@ -62,6 +69,7 @@ const tabs: Array<{ id: Tab; label: string; icon: LucideIcon; superOnly?: boolea
   { id: "overview", label: "Overview", icon: LayoutGrid },
   { id: "event-switch", label: "Event Aktif", icon: Power, superOnly: true },
   { id: "event", label: "Event", icon: CalendarClock, superOnly: true },
+  { id: "payment", label: "Payment", icon: CreditCard, superOnly: true },
   { id: "peserta", label: "Peserta", icon: UsersRound },
   { id: "panitia", label: "Panitia", icon: UserCog },
   { id: "jadwal", label: "Jadwal", icon: ClipboardList },
@@ -83,6 +91,13 @@ const emptyRules: EventRules = {
   eventId: "",
   minTeamMembers: 2,
   maxTeamMembers: 3
+};
+
+const emptyPaymentSettings: EventPaymentSettings = {
+  eventId: "",
+  amount: 0,
+  isEnabled: true,
+  updatedAt: ""
 };
 
 const emptySubmissionStage = (sortOrder: number): SubmissionStageInput => ({
@@ -115,11 +130,14 @@ export function AdminPanel() {
   const [committee, setCommittee] = useState<CommitteeMember[]>([]);
   const [rules, setRules] = useState<EventRules>(emptyRules);
   const [rulesDraft, setRulesDraft] = useState({ minTeamMembers: 2, maxTeamMembers: 3 });
+  const [paymentSettings, setPaymentSettings] = useState<EventPaymentSettings>(emptyPaymentSettings);
+  const [paymentDraft, setPaymentDraft] = useState({ amount: "0", isEnabled: true });
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [timelineDraft, setTimelineDraft] = useState<TimelineItemInput[]>([]);
   const [submissionStageDraft, setSubmissionStageDraft] = useState<SubmissionStageInput[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [redeemCodes, setRedeemCodes] = useState<AdminRedeemCode[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<TeamDetail | null>(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -146,6 +164,12 @@ export function AdminPanel() {
     division: "",
     password: ""
   });
+  const [redeemForm, setRedeemForm] = useState<CreateAdminRedeemCodePayload>({
+    role: "panitia",
+    division: "",
+    maxClaims: 1,
+    expiresAt: ""
+  });
   const [faqForm, setFaqForm] = useState<FAQPayload>(() => emptyFAQForm());
   const [announcementForm, setAnnouncementForm] = useState({
     type: "finalis",
@@ -170,7 +194,11 @@ export function AdminPanel() {
   }, [adminForm.name, adminForm.nim]);
 
   const isSuperAdmin = user?.role === "super_admin";
-  const visibleTabs = useMemo(() => tabs.filter((item) => !item.superOnly || isSuperAdmin), [isSuperAdmin]);
+  const canManageRedeem = user?.role === "admin" || isSuperAdmin;
+  const visibleTabs = useMemo(
+    () => tabs.filter((item) => (!item.superOnly || isSuperAdmin) && (item.id !== "panitia" || canManageRedeem)),
+    [canManageRedeem, isSuperAdmin]
+  );
 
   const filteredTeams = useMemo(() => {
     const q = search.toLowerCase();
@@ -221,20 +249,22 @@ export function AdminPanel() {
     setMessage("");
 
     try {
-      const [nextStats, nextTeams, nextUsers, active, nextEvents] = await Promise.all([
+      const [nextStats, nextTeams, nextUsers, active, nextEvents, nextRedeemCodes] = await Promise.all([
         api.adminStats(nextToken),
         api.adminTeams(nextToken),
         api.adminUsers(nextToken),
         api.activeEvent(),
-        api.events()
+        api.events(),
+        api.adminRedeemCodes(nextToken).catch(() => [])
       ]);
-      const [nextCommittee, nextTimeline, nextRules, nextSubmissionStages, nextFAQs] = await Promise.all([
+      const [nextCommittee, nextTimeline, nextRules, nextPaymentSettings, nextSubmissionStages, nextFAQs] = await Promise.all([
         api.committee(active.id),
         api.timeline(active.id),
         api.rules(active.id).catch((err) => {
           if (isNotFoundError(err)) return { ...emptyRules, eventId: active.id };
           throw err;
         }),
+        api.paymentSettings(nextToken, active.id).catch(() => ({ ...emptyPaymentSettings, eventId: active.id })),
         api.submissionStages(nextToken, active.id).catch((err) => {
           if (isNotFoundError(err)) return [];
           throw err;
@@ -247,6 +277,7 @@ export function AdminPanel() {
       setStats(nextStats);
       setTeams(nextTeams ?? []);
       setAdminUsers(nextUsers ?? []);
+      setRedeemCodes(nextRedeemCodes ?? []);
       setEvent(active);
       setEvents(nextEvents ?? []);
       setCommittee(nextCommittee ?? []);
@@ -256,6 +287,11 @@ export function AdminPanel() {
       setRulesDraft({
         minTeamMembers: nextRules.minTeamMembers,
         maxTeamMembers: nextRules.maxTeamMembers
+      });
+      setPaymentSettings(nextPaymentSettings);
+      setPaymentDraft({
+        amount: String(nextPaymentSettings.amount ?? 0),
+        isEnabled: nextPaymentSettings.isEnabled
       });
       setSubmissionStageDraft((nextSubmissionStages ?? []).map(submissionStageToInput));
       setFaqs(nextFAQs ?? []);
@@ -276,10 +312,13 @@ export function AdminPanel() {
   }, []);
 
   useEffect(() => {
-    if (!isSuperAdmin && (tab === "event" || tab === "event-switch")) {
+    if (!isSuperAdmin && (tab === "event" || tab === "event-switch" || tab === "payment")) {
       setTab("overview");
     }
-  }, [isSuperAdmin, tab]);
+    if (!canManageRedeem && tab === "panitia") {
+      setTab("overview");
+    }
+  }, [canManageRedeem, isSuperAdmin, tab]);
 
   async function submitLogin(eventForm: FormEvent<HTMLFormElement>) {
     eventForm.preventDefault();
@@ -443,6 +482,61 @@ export function AdminPanel() {
       showError(err instanceof Error ? err.message : "Gagal menyimpan aturan anggota.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function savePaymentSettings() {
+    if (!event) {
+      showError("Event aktif belum dimuat.");
+      return;
+    }
+    const amount = Number(paymentDraft.amount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      showError("Harga payment wajib berupa angka nol atau lebih.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const nextSettings = await api.updatePaymentSettings(token, event.id, {
+        amount: Math.round(amount),
+        isEnabled: paymentDraft.isEnabled
+      });
+      setPaymentSettings(nextSettings);
+      setPaymentDraft({
+        amount: String(nextSettings.amount),
+        isEnabled: nextSettings.isEnabled
+      });
+      showMessage("Harga payment berhasil diperbarui.");
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Gagal menyimpan harga payment.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function createRedeemCode(eventSubmit: FormEvent<HTMLFormElement>) {
+    eventSubmit.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      const code = await api.createAdminRedeemCode(token, redeemForm);
+      setRedeemCodes((current) => [code, ...current]);
+      setRedeemForm((current) => ({ ...current, maxClaims: 1, expiresAt: "" }));
+      showMessage("Kode redeem panitia berhasil dibuat.");
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Gagal membuat kode redeem.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function copyRedeemLink(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      showMessage("Link redeem disalin.");
+    } catch {
+      showError("Gagal menyalin link redeem.");
     }
   }
 
@@ -938,10 +1032,160 @@ export function AdminPanel() {
               </form>
             ) : null}
 
+            {tab === "payment" ? (
+              <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+                <article className="card bg-white p-5">
+                  <StatusPill tone={paymentSettings.isEnabled ? "teal" : "orange"}>
+                    {paymentSettings.isEnabled ? "Aktif" : "Nonaktif"}
+                  </StatusPill>
+                  <h2 className="mt-4 text-2xl font-black">Harga Pendaftaran</h2>
+                  <p className="mt-2 text-sm leading-6 text-dark/65">
+                    Nominal ini dipakai saat peserta membuat QRIS Pakasir untuk event aktif. Ubah dari sini jika biaya
+                    pendaftaran berubah, tanpa perlu edit `.env`.
+                  </p>
+                  <div className="mt-5 grid gap-4">
+                    <TextField
+                      label="Nominal QRIS"
+                      type="number"
+                      value={paymentDraft.amount}
+                      onChange={(value) => setPaymentDraft((current) => ({ ...current, amount: value }))}
+                      placeholder="Contoh: 50000"
+                    />
+                    <label className="flex items-center gap-3 rounded-md border border-dark/10 bg-light px-4 py-3 text-sm font-bold">
+                      <input
+                        type="checkbox"
+                        checked={paymentDraft.isEnabled}
+                        onChange={(event) => setPaymentDraft((current) => ({ ...current, isEnabled: event.target.checked }))}
+                      />
+                      Aktifkan pembayaran untuk event ini
+                    </label>
+                  </div>
+                  <div className="mt-5 flex justify-end">
+                    <button type="button" className="btn-primary" onClick={savePaymentSettings} disabled={loading}>
+                      <Save size={18} />
+                      Simpan Harga
+                    </button>
+                  </div>
+                </article>
+                <article className="card bg-white p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-primary">Ringkasan</p>
+                  <div className="mt-5 grid gap-3">
+                    <Info label="Event" value={event?.name ?? "-"} />
+                    <Info label="Nominal saat ini" value={formatCurrency(paymentSettings.amount)} />
+                    <Info label="Status" value={paymentSettings.isEnabled ? "Pembayaran aktif" : "Pembayaran nonaktif"} />
+                    <Info label="Update terakhir" value={formatDateTime(paymentSettings.updatedAt)} />
+                  </div>
+                  {paymentSettings.amount <= 0 ? (
+                    <p className="mt-5 rounded-md border border-orange/20 bg-orange/10 px-4 py-3 text-sm font-bold text-orange">
+                      Nominal masih 0. Peserta belum bisa generate QRIS sampai harga diatur.
+                    </p>
+                  ) : null}
+                </article>
+              </div>
+            ) : null}
+
             {tab === "panitia" ? (
               <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+                <form onSubmit={createRedeemCode} className="card bg-white p-5">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-10 w-10 place-items-center bg-primary text-white">
+                      <QrCode size={20} />
+                    </span>
+                    <div>
+                      <h2 className="text-xl font-black">Buat Kode Redeem Panitia</h2>
+                      <p className="mt-1 text-sm leading-6 text-dark/60">
+                        Kadiv membuat link atau QR. Panitia claim sendiri dengan nama dan email ITERA.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-5 grid gap-4">
+                    <div>
+                      <label className="label" htmlFor="redeem-role">
+                        Role hasil claim
+                      </label>
+                      <CustomSelect
+                        id="redeem-role"
+                        value={redeemForm.role}
+                        onChange={(value) => setRedeemForm((current) => ({ ...current, role: value }))}
+                        options={[
+                          { value: "panitia", label: "Panitia" },
+                          { value: "admin", label: "Admin / Kadiv" },
+                          { value: "juri", label: "Juri" }
+                        ]}
+                      />
+                    </div>
+                    <TextField
+                      label="Divisi"
+                      value={redeemForm.division}
+                      onChange={(value) => setRedeemForm((current) => ({ ...current, division: value }))}
+                      placeholder="Acara, Pubdok, Website"
+                    />
+                    <TextField
+                      label="Maksimal Claim"
+                      type="number"
+                      value={String(redeemForm.maxClaims)}
+                      onChange={(value) => setRedeemForm((current) => ({ ...current, maxClaims: Number(value) }))}
+                    />
+                    <TextField
+                      label="Kedaluwarsa"
+                      type="datetime-local"
+                      value={redeemForm.expiresAt}
+                      onChange={(value) => setRedeemForm((current) => ({ ...current, expiresAt: value }))}
+                    />
+                  </div>
+                  <div className="mt-5 flex justify-end">
+                    <button className="btn-primary" disabled={loading}>
+                      <QrCode size={18} />
+                      Generate Redeem
+                    </button>
+                  </div>
+                </form>
+
+                <div className="card bg-white p-5">
+                  <h2 className="text-xl font-black">Link & QR Redeem</h2>
+                  <div className="mt-5 grid gap-3">
+                    {redeemCodes.map((item) => (
+                      <article key={item.id} className="rounded-lg border border-dark/10 bg-light p-4">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap gap-2">
+                              <StatusPill tone={item.status === "active" ? "teal" : item.status === "claimed" ? "dark" : "orange"}>
+                                {item.status}
+                              </StatusPill>
+                              <StatusPill tone="amber">{item.role}</StatusPill>
+                            </div>
+                            <p className="mt-3 font-black">{item.code}</p>
+                            <p className="mt-1 break-all text-xs leading-5 text-dark/55">{item.claimUrl}</p>
+                            <p className="mt-2 text-xs font-bold text-dark/45">
+                              {item.claimedCount}/{item.maxClaims} claim {item.division ? `- ${item.division}` : ""}
+                            </p>
+                          </div>
+                          <img
+                            className="h-24 w-24 bg-white p-2"
+                            alt={`QR redeem ${item.code}`}
+                            src={qrImageUrl(item.claimUrl)}
+                          />
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button type="button" className="btn-secondary px-3 py-2" onClick={() => copyRedeemLink(item.claimUrl)}>
+                            <Copy size={16} />
+                            Copy Link
+                          </button>
+                          <a className="btn-secondary px-3 py-2" href={item.claimUrl} target="_blank" rel="noreferrer">
+                            <LinkIcon size={16} />
+                            Buka
+                          </a>
+                        </div>
+                      </article>
+                    ))}
+                    {!redeemCodes.length ? <p className="text-sm text-dark/60">Belum ada kode redeem.</p> : null}
+                  </div>
+                </div>
+
+                {isSuperAdmin ? (
                 <form onSubmit={createAdmin} className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft">
-                  <h2 className="text-xl font-black">Tambah Akun Panitia</h2>
+                  <h2 className="text-xl font-black">Tambah Akun Manual</h2>
+                  <p className="mt-1 text-sm leading-6 text-dark/60">Khusus super admin untuk membuat Kadiv atau akun darurat.</p>
                   <div className="mt-5 grid gap-4">
                     <TextField label="Nama" value={adminForm.name} onChange={(value) => setAdminForm((current) => ({ ...current, name: value }))} />
                     <TextField label="NIM" value={adminForm.nim} onChange={(value) => setAdminForm((current) => ({ ...current, nim: value }))} />
@@ -954,8 +1198,9 @@ export function AdminPanel() {
                         value={adminForm.role}
                         onChange={(value) => setAdminForm((current) => ({ ...current, role: value }))}
                         options={[
-                          { value: "admin", label: "Admin" },
+                          { value: "admin", label: "Admin / Kadiv" },
                           { value: "super_admin", label: "Super Admin" },
+                          { value: "panitia", label: "Panitia" },
                           { value: "juri", label: "Juri" }
                         ]}
                       />
@@ -980,6 +1225,8 @@ export function AdminPanel() {
                     </button>
                   </div>
                 </form>
+                ) : null}
+
                 <div className="rounded-lg border border-dark/10 bg-white p-5 shadow-soft">
                   <h2 className="text-xl font-black">Akun Admin & Panitia</h2>
                   <div className="mt-5 overflow-x-auto">
@@ -1522,6 +1769,31 @@ function sortFAQs(items: FAQ[]) {
 
 function formatEventDates(event: Event) {
   return `${event.year} | ${event.startDate} - ${event.endDate}`;
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0
+  }).format(value || 0);
+}
+
+function formatDateTime(value: string) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function qrImageUrl(value: string) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=2&data=${encodeURIComponent(value)}`;
 }
 
 function EventActionModal({

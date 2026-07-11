@@ -75,6 +75,7 @@ type r2SubmissionFileStorage struct {
 type contextKey string
 
 const adminRoleContextKey contextKey = "adminRole"
+const adminIDContextKey contextKey = "adminID"
 const maxSubmissionUploadBytes int64 = 80 << 20
 
 func newRegistrationMailer(apiKey, from string) registrationMailer {
@@ -393,6 +394,7 @@ func NewRouter(
 		r.Post("/registrations/payment/check", server.checkRegistrationPayment)
 		r.Post("/registrations/otp", server.requestRegistrationOTP)
 		r.Post("/registrations", server.createRegistration)
+		r.Post("/admin/redeem/{code}/claim", server.claimAdminRedeem)
 		r.Get("/participants/{teamID}/dashboard", server.participantDashboard)
 		r.Post("/participants/{teamID}/submissions", server.createSubmission)
 
@@ -411,6 +413,8 @@ func NewRouter(
 			r.Put("/admin/events/{eventID}/timeline", server.replaceTimeline)
 			r.Get("/admin/events/{eventID}/rules", server.eventRules)
 			r.Put("/admin/events/{eventID}/rules", server.updateEventRules)
+			r.Get("/admin/events/{eventID}/payment-settings", server.eventPaymentSettings)
+			r.Put("/admin/events/{eventID}/payment-settings", server.updateEventPaymentSettings)
 			r.Get("/admin/events/{eventID}/submission-stages", server.listSubmissionStages)
 			r.Put("/admin/events/{eventID}/submission-stages", server.replaceSubmissionStages)
 			r.Get("/admin/events/{eventID}/faqs", server.listAdminFAQs)
@@ -422,6 +426,8 @@ func NewRouter(
 			r.Post("/admin/instagram/sync", server.syncInstagramAnnouncements)
 			r.Get("/admin/users", server.listAdminUsers)
 			r.Post("/admin/users", server.createAdminUser)
+			r.Get("/admin/redeem-codes", server.listAdminRedeemCodes)
+			r.Post("/admin/redeem-codes", server.createAdminRedeemCode)
 		})
 	})
 
@@ -960,6 +966,32 @@ func (s *Server) updateEventRules(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, rules)
 }
 
+func (s *Server) eventPaymentSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := s.store.GetEventPaymentSettings(r.Context(), chi.URLParam(r, "eventID"), s.pakasirFallbackAmount())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeData(w, http.StatusOK, settings)
+}
+
+func (s *Server) updateEventPaymentSettings(w http.ResponseWriter, r *http.Request) {
+	if !requireSuperAdmin(w, r) {
+		return
+	}
+	var input models.EventPaymentSettingsRequest
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	settings, err := s.store.UpdateEventPaymentSettings(r.Context(), chi.URLParam(r, "eventID"), input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusOK, settings)
+}
+
 func (s *Server) listSubmissionStages(w http.ResponseWriter, r *http.Request) {
 	stages, err := s.store.ListSubmissionStages(r.Context(), chi.URLParam(r, "eventID"))
 	if err != nil {
@@ -1083,6 +1115,9 @@ func (s *Server) listAdminUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createAdminUser(w http.ResponseWriter, r *http.Request) {
+	if !requireSuperAdmin(w, r) {
+		return
+	}
 	var input models.CreateAdminUserRequest
 	if err := decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -1094,6 +1129,53 @@ func (s *Server) createAdminUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusCreated, user)
+}
+
+func (s *Server) listAdminRedeemCodes(w http.ResponseWriter, r *http.Request) {
+	if !requireKadivOrSuperAdmin(w, r) {
+		return
+	}
+	codes, err := s.store.ListAdminRedeemCodes(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	baseURL := claimBaseURL(r)
+	for index := range codes {
+		codes[index].ClaimURL = strings.TrimRight(baseURL, "/") + "/claim-redeem/" + codes[index].Code
+	}
+	writeData(w, http.StatusOK, codes)
+}
+
+func (s *Server) createAdminRedeemCode(w http.ResponseWriter, r *http.Request) {
+	if !requireKadivOrSuperAdmin(w, r) {
+		return
+	}
+	var input models.CreateAdminRedeemCodeRequest
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	code, err := s.store.CreateAdminRedeemCode(r.Context(), input, currentAdminID(r), claimBaseURL(r))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusCreated, code)
+}
+
+func (s *Server) claimAdminRedeem(w http.ResponseWriter, r *http.Request) {
+	var input models.ClaimAdminRedeemRequest
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	result, err := s.store.ClaimAdminRedeemCode(r.Context(), chi.URLParam(r, "code"), input, claimBaseURL(r))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusCreated, result)
 }
 
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
@@ -1121,7 +1203,9 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 			return
 		}
 		role, _ := claims["role"].(string)
+		adminID, _ := claims["sub"].(string)
 		ctx := context.WithValue(r.Context(), adminRoleContextKey, role)
+		ctx = context.WithValue(ctx, adminIDContextKey, adminID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -1132,6 +1216,40 @@ func requireSuperAdmin(w http.ResponseWriter, r *http.Request) bool {
 	}
 	writeMessage(w, http.StatusForbidden, "hanya super admin yang dapat mengelola event")
 	return false
+}
+
+func requireKadivOrSuperAdmin(w http.ResponseWriter, r *http.Request) bool {
+	role, _ := r.Context().Value(adminRoleContextKey).(string)
+	if role == "admin" || role == "super_admin" {
+		return true
+	}
+	writeMessage(w, http.StatusForbidden, "hanya kadiv atau super admin yang dapat membuat kode redeem")
+	return false
+}
+
+func currentAdminID(r *http.Request) string {
+	id, _ := r.Context().Value(adminIDContextKey).(string)
+	return id
+}
+
+func claimBaseURL(r *http.Request) string {
+	if origin := strings.TrimRight(strings.TrimSpace(r.Header.Get("Origin")), "/"); origin != "" {
+		return origin
+	}
+	proto := "http"
+	if r.TLS != nil {
+		proto = "https"
+	}
+	if forwardedProto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwardedProto != "" {
+		proto = strings.Split(forwardedProto, ",")[0]
+	}
+	if host := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); host != "" {
+		return proto + "://" + strings.Split(host, ",")[0]
+	}
+	if r.Host != "" {
+		return proto + "://" + r.Host
+	}
+	return "http://localhost:5173"
 }
 
 func normalizeEmail(value string) (string, error) {
