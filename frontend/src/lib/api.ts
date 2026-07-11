@@ -18,6 +18,7 @@ import type {
   EventRulesPayload,
   LoginResponse,
   ParticipantDashboard,
+  PublicTeam,
   RegistrationPayment,
   RegistrationPaymentCheckPayload,
   RegistrationPaymentPayload,
@@ -110,6 +111,7 @@ export const api = {
   faqs: (eventId: string) => request<FAQ[]>(`/events/${eventId}/faqs`),
   announcements: (eventId: string, type = "") =>
     request<Announcement[]>(`/events/${eventId}/announcements${type ? `?type=${type}` : ""}`),
+  eventTeams: (eventId: string) => request<PublicTeam[]>(`/events/${eventId}/teams`),
   requestRegistrationOTP: (payload: RegistrationOTPPayload) =>
     request<RegistrationOTPResponse>("/registrations/otp", { method: "POST", body: JSON.stringify(payload) }),
   createRegistrationPayment: (payload: RegistrationPaymentPayload) =>

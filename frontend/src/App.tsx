@@ -6,6 +6,7 @@ import { AnnouncementsPage } from "./pages/AnnouncementsPage";
 import { ClaimRedeemPage } from "./pages/ClaimRedeemPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { HomePage } from "./pages/HomePage";
+import { LeaderboardPage } from "./pages/LeaderboardPage";
 import { RegistrationPage } from "./pages/RegistrationPage";
 import { WinnerDetailPage } from "./pages/WinnerDetailPage";
 
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/daftar" element={<RegistrationPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/pengumuman" element={<AnnouncementsPage />} />
+        <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/pengumuman/:eventId/berita/:announcementId" element={<AnnouncementDetailPage />} />
         <Route path="/pengumuman/:eventId/:teamSlug" element={<WinnerDetailPage />} />
         <Route path="/claim-redeem/:code" element={<ClaimRedeemPage />} />

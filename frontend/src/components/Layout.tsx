@@ -1,5 +1,5 @@
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { CalendarDays, ChevronUp, Home, LayoutDashboard, Megaphone, UserPlus, X } from "lucide-react";
+import { CalendarDays, ChevronUp, Home, LayoutDashboard, Megaphone, ShieldCheck, Trophy, UserPlus, X, type LucideIcon } from "lucide-react";
 import clsx from "clsx";
 import { useEffect, useLayoutEffect, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { ToastViewport } from "./ToastViewport";
@@ -7,46 +7,77 @@ import { api } from "../lib/api";
 import type { Event } from "../lib/types";
 
 // menu navigasi utama — pake lucide-react icon biar gak butuh gambar
-const navItems = [
+type NavItem = {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+};
+
+const adminPanelPath = "/X7pQm2Kf9vLzR4tN8wYbC1hJ6sD3aG5e";
+
+const publicNavItems: NavItem[] = [
   { to: "/", label: "Beranda", icon: Home },
   { to: "/daftar", label: "Pendaftaran", icon: UserPlus },
   { to: "/pengumuman", label: "Pengumuman", icon: Megaphone },
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }
+  { to: "/leaderboard", label: "Leaderboard", icon: Trophy },
+  { to: "/dashboard", label: "Dashboard Tim", icon: LayoutDashboard }
 ];
 
+const adminNavItem: NavItem = { to: adminPanelPath, label: "Admin", icon: ShieldCheck };
 const radialStartAngle = -90;
-const radialItemStep = 360 / navItems.length;
 const radialItemRadius = 34;
 
-function getRadialItemAngle(index: number) {
-  return radialStartAngle + index * radialItemStep;
+function getRadialItemStep(itemCount: number) {
+  return 360 / Math.max(1, itemCount);
 }
 
-function getRadialSectorAngle(index: number) {
+function getRadialItemAngle(index: number, itemCount: number) {
+  return radialStartAngle + index * getRadialItemStep(itemCount);
+}
+
+function getRadialSectorAngle(index: number, itemCount: number) {
   // atan2 memakai 0 derajat di kanan, sedangkan CSS conic-gradient 0 derajat di atas.
   // Tambah 90 derajat supaya sektor hover visual tepat mengikuti posisi mouse.
-  return getRadialItemAngle(index) - radialItemStep / 2 + 90;
+  const step = getRadialItemStep(itemCount);
+  return getRadialItemAngle(index, itemCount) - step / 2 + 90;
 }
 
-function getNearestRadialIndex(angle: number) {
-  return navItems.reduce(
-    (nearest, _item, index) => {
-      const diff = Math.abs(normalizeAngle(angle - getRadialItemAngle(index)));
-      return diff < nearest.diff ? { index, diff } : nearest;
-    },
-    { index: 0, diff: Number.POSITIVE_INFINITY }
-  ).index;
+function getNearestRadialIndex(angle: number, itemCount: number) {
+  let nearestIndex = 0;
+  let nearestDiff = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < itemCount; index += 1) {
+    const diff = Math.abs(normalizeAngle(angle - getRadialItemAngle(index, itemCount)));
+    if (diff < nearestDiff) {
+      nearestIndex = index;
+      nearestDiff = diff;
+    }
+  }
+  return nearestIndex;
 }
 
 function normalizeAngle(angle: number) {
   return ((angle + 180) % 360 + 360) % 360 - 180;
 }
 
+function hasAdminPanelAccess() {
+  const token = localStorage.getItem("pointproject.adminToken");
+  const rawUser = localStorage.getItem("pointproject.adminUser");
+  if (!token || !rawUser) return false;
+  try {
+    const user = JSON.parse(rawUser) as { role?: string };
+    return ["admin", "panitia", "super_admin", "kadiv"].includes((user.role ?? "").toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 export function Layout({ children }: { children: ReactNode }) {
   const [event, setEvent] = useState<Event | null>(null);
   const [navOpen, setNavOpen] = useState(false);
   const [headerDark, setHeaderDark] = useState(false);
+  const [adminNavVisible, setAdminNavVisible] = useState(hasAdminPanelAccess);
   const location = useLocation();
+  const navItems = adminNavVisible ? [...publicNavItems, adminNavItem] : publicNavItems;
 
   usePageMotion(location.pathname);
 
@@ -59,6 +90,20 @@ export function Layout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setNavOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (navOpen) setAdminNavVisible(hasAdminPanelAccess());
+  }, [navOpen]);
+
+  useEffect(() => {
+    const refreshAdminAccess = () => setAdminNavVisible(hasAdminPanelAccess());
+    window.addEventListener("storage", refreshAdminAccess);
+    window.addEventListener("pointproject:admin-session", refreshAdminAccess);
+    return () => {
+      window.removeEventListener("storage", refreshAdminAccess);
+      window.removeEventListener("pointproject:admin-session", refreshAdminAccess);
+    };
+  }, []);
 
   useEffect(() => {
     document.body.style.overflow = navOpen ? "hidden" : "";
@@ -132,7 +177,7 @@ export function Layout({ children }: { children: ReactNode }) {
       >
         <ChevronUp size={24} strokeWidth={2.4} />
       </button>
-      <RadialNavOverlay open={navOpen} pathname={location.pathname} onClose={() => setNavOpen(false)} />
+      <RadialNavOverlay open={navOpen} pathname={location.pathname} navItems={navItems} onClose={() => setNavOpen(false)} />
       <main key={location.pathname} className="relative z-10 flex-1 page-transition">
         {children}
       </main>
@@ -163,15 +208,27 @@ export function Layout({ children }: { children: ReactNode }) {
   );
 }
 
-function RadialNavOverlay({ open, pathname, onClose }: { open: boolean; pathname: string; onClose: () => void }) {
+function RadialNavOverlay({
+  open,
+  pathname,
+  navItems,
+  onClose
+}: {
+  open: boolean;
+  pathname: string;
+  navItems: NavItem[];
+  onClose: () => void;
+}) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const navigate = useNavigate();
-  const activeIndex = Math.max(
-    0,
-    navItems.findIndex((item) => (item.to === "/" ? pathname === "/" : pathname.startsWith(item.to)))
-  );
-  const hoveredSectorAngle = hoveredIndex === null ? null : getRadialSectorAngle(hoveredIndex);
-  const [sectorAngle, setSectorAngle] = useState(getRadialSectorAngle(0));
+  const radialItemStep = getRadialItemStep(navItems.length);
+  const hoveredSectorAngle = hoveredIndex === null ? null : getRadialSectorAngle(hoveredIndex, navItems.length);
+  const [sectorAngle, setSectorAngle] = useState(getRadialSectorAngle(0, navItems.length));
+
+  useEffect(() => {
+    setHoveredIndex(null);
+    setSectorAngle(getRadialSectorAngle(0, navItems.length));
+  }, [navItems.length]);
 
   useEffect(() => {
     if (hoveredSectorAngle === null) return;
@@ -188,7 +245,7 @@ function RadialNavOverlay({ open, pathname, onClose }: { open: boolean; pathname
     if (distance < rect.width * 0.19 || distance > rect.width * 0.5) return null;
 
     const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-    return getNearestRadialIndex(angle);
+    return getNearestRadialIndex(angle, navItems.length);
   };
   const handlePanelPointerMove = (event: ReactMouseEvent<HTMLDivElement>) => {
     const nextIndex = getPanelIndexFromPointer(event);
@@ -244,7 +301,7 @@ function RadialNavOverlay({ open, pathname, onClose }: { open: boolean; pathname
         <nav className="radial-menu-items">
           {navItems.map((item, index) => {
             const Icon = item.icon;
-            const angle = getRadialItemAngle(index);
+            const angle = getRadialItemAngle(index, navItems.length);
             const radians = (angle * Math.PI) / 180;
             const itemX = 50 + Math.cos(radians) * radialItemRadius;
             const itemY = 50 + Math.sin(radians) * radialItemRadius;

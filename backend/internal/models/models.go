@@ -150,6 +150,17 @@ type Team struct {
 	CreatedAt          string       `json:"createdAt"`
 }
 
+type PublicTeam struct {
+	ID                 string `json:"id"`
+	EventID            string `json:"eventId"`
+	CategoryName       string `json:"categoryName"`
+	Name               string `json:"name"`
+	Batch              int    `json:"batch"`
+	Institution        string `json:"institution"`
+	VerificationStatus string `json:"verificationStatus"`
+	CreatedAt          string `json:"createdAt"`
+}
+
 type RegistrationRequest struct {
 	EventID        string       `json:"eventId"`
 	CategoryID     string       `json:"categoryId"`

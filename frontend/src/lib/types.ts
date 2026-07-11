@@ -133,6 +133,17 @@ export type Team = {
   createdAt: string;
 };
 
+export type PublicTeam = {
+  id: string;
+  eventId: string;
+  categoryName: string;
+  name: string;
+  batch: number;
+  institution: string;
+  verificationStatus: string;
+  createdAt: string;
+};
+
 export type RegistrationPayload = {
   eventId: string;
   categoryId: string;

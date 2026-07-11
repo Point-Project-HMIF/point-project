@@ -330,6 +330,7 @@ export function AdminPanel() {
       setUser(response.user);
       localStorage.setItem("pointproject.adminToken", response.token);
       localStorage.setItem("pointproject.adminUser", JSON.stringify(response.user));
+      window.dispatchEvent(new CustomEvent("pointproject:admin-session"));
       await loadAdminData(response.token);
       showMessage(`Berhasil masuk sebagai ${response.user.name}.`);
     } catch (err) {
@@ -796,6 +797,7 @@ export function AdminPanel() {
               onClick={() => {
                 localStorage.removeItem("pointproject.adminToken");
                 localStorage.removeItem("pointproject.adminUser");
+                window.dispatchEvent(new CustomEvent("pointproject:admin-session"));
                 setToken("");
                 setUser(null);
               }}

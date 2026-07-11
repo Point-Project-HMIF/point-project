@@ -666,7 +666,7 @@ textarea:focus-visible {
   opacity: 0.56;
   background:
     repeating-conic-gradient(
-      from calc(-90deg + (var(--sector-size, 90deg) / 2)),
+      from calc(var(--sector-size, 90deg) / -2),
       rgba(255, 255, 255, 0.14) 0deg 0.5deg,
       transparent 0.5deg var(--sector-size, 90deg)
     ),
@@ -816,6 +816,354 @@ textarea:focus-visible {
   font-size: 0.65rem;
   font-weight: 800;
   letter-spacing: -0.02em;
+}
+
+.leaderboard-page {
+  font-family: "Plus Jakarta Sans", sans-serif;
+}
+
+.leaderboard-grid-bg {
+  min-height: inherit;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.075) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.075) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    radial-gradient(circle at 50% 0%, rgba(77, 166, 255, 0.12), transparent 34%),
+    #05070d;
+  background-size:
+    96px 96px,
+    96px 96px,
+    12px 12px,
+    12px 12px,
+    100% 100%,
+    100% 100%;
+}
+
+.leaderboard-filter-panel {
+  --clip-card-corner: 18px;
+  position: relative;
+  z-index: 8;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(5, 7, 13, 0.72);
+  padding: 1.1rem;
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--clip-card-corner)) 0,
+    100% var(--clip-card-corner),
+    100% 100%,
+    var(--clip-card-corner) 100%,
+    0 calc(100% - var(--clip-card-corner))
+  );
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.leaderboard-podium {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: clamp(1rem, 3vw, 2.25rem);
+}
+
+.winner-wire-card {
+  --clip-card-corner: 20px;
+  position: relative;
+  min-height: 390px;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  background: rgba(5, 7, 13, 0.52);
+  padding: 9.5rem 1.1rem 1.1rem;
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--clip-card-corner)) 0,
+    100% var(--clip-card-corner),
+    100% 100%,
+    var(--clip-card-corner) 100%,
+    0 calc(100% - var(--clip-card-corner))
+  );
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.winner-wire-card.rank-1 {
+  min-height: 450px;
+  transform: translateY(2.4rem);
+}
+
+.winner-wire-card.rank-2,
+.winner-wire-card.rank-3 {
+  transform: translateY(-1.4rem);
+}
+
+.winner-wire-card::before,
+.winner-wire-card::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.winner-wire-card::before {
+  left: 10%;
+  right: 10%;
+  top: 6.8rem;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.winner-wire-card::after {
+  left: 0;
+  right: 0;
+  top: 15.4rem;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.winner-wire-actor {
+  position: absolute;
+  left: 50%;
+  top: -3.2rem;
+  width: 170px;
+  height: 180px;
+  transform: translateX(-50%);
+}
+
+.actor-head,
+.actor-body,
+.actor-arm,
+.actor-leg {
+  position: absolute;
+  display: block;
+  border-color: rgba(255, 255, 255, 0.82);
+}
+
+.actor-head {
+  left: 50%;
+  top: 0;
+  width: 56px;
+  height: 56px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 999px;
+  transform: translateX(-50%);
+}
+
+.actor-body {
+  left: 50%;
+  top: 58px;
+  width: 1px;
+  height: 78px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.actor-arm {
+  top: 88px;
+  width: 76px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.actor-arm.left {
+  right: 50%;
+}
+
+.actor-arm.right {
+  left: 50%;
+}
+
+.actor-leg {
+  top: 130px;
+  width: 1px;
+  height: 74px;
+  background: rgba(255, 255, 255, 0.68);
+  transform-origin: top;
+}
+
+.actor-leg.left {
+  left: 50%;
+  transform: rotate(28deg);
+}
+
+.actor-leg.right {
+  right: calc(50% - 1px);
+  transform: rotate(-28deg);
+}
+
+.winner-wire-rank {
+  position: relative;
+  display: grid;
+  min-height: 4.6rem;
+  place-items: center;
+  gap: 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.winner-wire-rank svg {
+  color: #ff3d3d;
+  filter: drop-shadow(0 0 9px rgba(77, 166, 255, 0.58));
+}
+
+.winner-wire-name {
+  display: block;
+  margin-top: 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  padding: 0.48rem 0.7rem;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-align: center;
+  text-decoration: none;
+  transition:
+    background 180ms ease,
+    color 180ms ease;
+}
+
+.winner-wire-name:hover {
+  background: #fff;
+  color: #05070d;
+}
+
+.winner-wire-info {
+  display: grid;
+  min-height: 8.3rem;
+  place-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-top: 0;
+  padding: 1rem;
+  text-align: center;
+}
+
+.winner-wire-info p {
+  max-width: 18rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.winner-wire-link {
+  margin-top: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #66e8ff;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.leaderboard-divider {
+  position: relative;
+  margin: clamp(4rem, 8vw, 7rem) 0 2.2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.42);
+  text-align: center;
+}
+
+.leaderboard-divider span {
+  position: relative;
+  top: -0.72rem;
+  display: inline-flex;
+  background: #05070d;
+  padding: 0 1rem;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.leaderboard-team-field {
+  position: relative;
+  display: grid;
+  min-height: 520px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(1rem, 4vw, 3.5rem);
+  padding: 1.5rem 0 4rem;
+}
+
+.leaderboard-team-field::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(transparent, rgba(255, 255, 255, 0.42), transparent);
+}
+
+.participant-node {
+  --clip-card-corner: 10px;
+  justify-self: center;
+  width: min(100%, 230px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: rgba(5, 7, 13, 0.78);
+  padding: 0.9rem 1rem;
+  text-align: center;
+  transform: translateY(calc(var(--node-step) * 10px));
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--clip-card-corner)) 0,
+    100% var(--clip-card-corner),
+    100% 100%,
+    var(--clip-card-corner) 100%,
+    0 calc(100% - var(--clip-card-corner))
+  );
+}
+
+.participant-node p {
+  font-size: 0.78rem;
+}
+
+.participant-node span {
+  margin-top: 0.32rem;
+  display: block;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.leaderboard-empty {
+  --clip-card-corner: 18px;
+  display: grid;
+  justify-items: center;
+  gap: 0.7rem;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.045);
+  padding: 2rem;
+  text-align: center;
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--clip-card-corner)) 0,
+    100% var(--clip-card-corner),
+    100% 100%,
+    var(--clip-card-corner) 100%,
+    0 calc(100% - var(--clip-card-corner))
+  );
+}
+
+@media (max-width: 900px) {
+  .leaderboard-podium {
+    grid-template-columns: 1fr;
+  }
+
+  .winner-wire-card,
+  .winner-wire-card.rank-1,
+  .winner-wire-card.rank-2,
+  .winner-wire-card.rank-3 {
+    min-height: 360px;
+    transform: none;
+  }
+
+  .leaderboard-team-field {
+    grid-template-columns: 1fr;
+  }
+
+  .leaderboard-team-field::before {
+    left: 1rem;
+  }
 }
 
 /* helper kecil yg gak perlu ditambahin ke tailwind config */

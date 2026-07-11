@@ -389,6 +389,7 @@ func NewRouter(
 		r.Get("/events/{eventID}/rules", server.eventRules)
 		r.Get("/events/{eventID}/faqs", server.listFAQs)
 		r.Get("/events/{eventID}/announcements", server.listAnnouncements)
+		r.Get("/events/{eventID}/teams", server.listPublicTeams)
 		r.Get("/files/r2/*", server.downloadR2File)
 		r.Post("/registrations/payment", server.createRegistrationPayment)
 		r.Post("/registrations/payment/check", server.checkRegistrationPayment)
@@ -553,6 +554,28 @@ func (s *Server) listAnnouncements(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, announcements)
+}
+
+func (s *Server) listPublicTeams(w http.ResponseWriter, r *http.Request) {
+	teams, err := s.store.ListTeams(r.Context(), models.TeamFilters{EventID: chi.URLParam(r, "eventID")})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	publicTeams := make([]models.PublicTeam, 0, len(teams))
+	for _, team := range teams {
+		publicTeams = append(publicTeams, models.PublicTeam{
+			ID:                 team.ID,
+			EventID:            team.EventID,
+			CategoryName:       team.CategoryName,
+			Name:               team.Name,
+			Batch:              team.Batch,
+			Institution:        team.Institution,
+			VerificationStatus: team.VerificationStatus,
+			CreatedAt:          team.CreatedAt,
+		})
+	}
+	writeData(w, http.StatusOK, publicTeams)
 }
 
 func (s *Server) requestRegistrationOTP(w http.ResponseWriter, r *http.Request) {
