@@ -7,6 +7,7 @@ coverage/
 tmp/
 *.log
 backend/bin/
+backend/api.exe
 frontend/.vite/
 *.tsbuildinfo
 frontend/vite.config.js
