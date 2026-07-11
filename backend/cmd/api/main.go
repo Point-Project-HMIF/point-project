@@ -50,6 +50,9 @@ func main() {
 		cfg.R2PublicBaseURL,
 		cfg.R2ObjectPrefix,
 		instagramSyncer,
+		cfg.PakasirSlug,
+		cfg.PakasirAPIKey,
+		cfg.PakasirAmount,
 	)
 
 	log.Printf("Point Project API berjalan di %s", cfg.HTTPAddr)

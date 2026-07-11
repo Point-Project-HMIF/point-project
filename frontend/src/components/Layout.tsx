@@ -23,7 +23,9 @@ function getRadialItemAngle(index: number) {
 }
 
 function getRadialSectorAngle(index: number) {
-  return getRadialItemAngle(index) + 90 - radialItemStep / 2;
+  // atan2 memakai 0 derajat di kanan, sedangkan CSS conic-gradient 0 derajat di atas.
+  // Tambah 90 derajat supaya sektor hover visual tepat mengikuti posisi mouse.
+  return getRadialItemAngle(index) - radialItemStep / 2 + 90;
 }
 
 function getNearestRadialIndex(angle: number) {
@@ -47,6 +49,12 @@ export function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   usePageMotion(location.pathname);
+
+  useEffect(() => {
+    window.scrollTo({ left: 0, top: 0, behavior: "auto" });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [location.pathname]);
 
   useEffect(() => {
     setNavOpen(false);
@@ -177,7 +185,7 @@ function RadialNavOverlay({ open, pathname, onClose }: { open: boolean; pathname
     const dx = event.clientX - centerX;
     const dy = event.clientY - centerY;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    if (distance < rect.width * 0.14) return null;
+    if (distance < rect.width * 0.19 || distance > rect.width * 0.5) return null;
 
     const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
     return getNearestRadialIndex(angle);
@@ -221,7 +229,12 @@ function RadialNavOverlay({ open, pathname, onClose }: { open: boolean; pathname
         onMouseMove={handlePanelPointerMove}
         onClick={handlePanelClick}
         onMouseLeave={() => setHoveredIndex(null)}
-        style={{ "--sector-from": `${sectorAngle}deg` } as CSSProperties}
+        style={
+          {
+            "--sector-from": `${sectorAngle}deg`,
+            "--sector-size": `${radialItemStep}deg`
+          } as CSSProperties
+        }
       >
         <span className="radial-sector-highlight" aria-hidden="true" />
         <span className="radial-sector-guides" aria-hidden="true" />

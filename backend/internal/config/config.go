@@ -26,6 +26,9 @@ type Config struct {
 	InstagramUserID    string
 	InstagramOldest    int64
 	InstagramSyncEvery time.Duration
+	PakasirSlug        string
+	PakasirAPIKey      string
+	PakasirAmount      int
 }
 
 func Load() Config {
@@ -50,6 +53,9 @@ func Load() Config {
 		InstagramUserID:    os.Getenv("INSTAGRAM_USER_ID"),
 		InstagramOldest:    envInt64("INSTAGRAM_OLDEST_TIMESTAMP", 1666262030),
 		InstagramSyncEvery: envDuration("INSTAGRAM_SYNC_INTERVAL", 30*time.Minute),
+		PakasirSlug:        os.Getenv("PAKASIR_SLUG"),
+		PakasirAPIKey:      os.Getenv("PAKASIR_API_KEY"),
+		PakasirAmount:      envInt("PAKASIR_AMOUNT", 0),
 	}
 }
 
@@ -66,6 +72,18 @@ func envInt64(key string, fallback int64) int64 {
 		return fallback
 	}
 	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func envInt(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return fallback
 	}

@@ -41,6 +41,7 @@ type Server struct {
 	mailer    registrationMailer
 	files     submissionFileStorage
 	instagram *instagram.Syncer
+	pakasir   *pakasirClient
 }
 
 type registrationMailer interface {
@@ -346,6 +347,9 @@ func NewRouter(
 	r2PublicBaseURL,
 	r2ObjectPrefix string,
 	instagramSyncer *instagram.Syncer,
+	pakasirSlug,
+	pakasirAPIKey string,
+	pakasirAmount int,
 ) http.Handler {
 	if len(allowedOrigins) == 0 {
 		allowedOrigins = []string{"http://localhost:5173"}
@@ -357,6 +361,7 @@ func NewRouter(
 		mailer:    newRegistrationMailer(resendAPIKey, resendFrom),
 		files:     newSubmissionFileStorage(r2Endpoint, r2Bucket, r2AccessKeyID, r2SecretAccessKey, r2PublicBaseURL, r2ObjectPrefix),
 		instagram: instagramSyncer,
+		pakasir:   newPakasirClient(pakasirSlug, pakasirAPIKey, pakasirAmount),
 	}
 	server.startInstagramAutoSync()
 
@@ -384,6 +389,8 @@ func NewRouter(
 		r.Get("/events/{eventID}/faqs", server.listFAQs)
 		r.Get("/events/{eventID}/announcements", server.listAnnouncements)
 		r.Get("/files/r2/*", server.downloadR2File)
+		r.Post("/registrations/payment", server.createRegistrationPayment)
+		r.Post("/registrations/payment/check", server.checkRegistrationPayment)
 		r.Post("/registrations/otp", server.requestRegistrationOTP)
 		r.Post("/registrations", server.createRegistration)
 		r.Get("/participants/{teamID}/dashboard", server.participantDashboard)

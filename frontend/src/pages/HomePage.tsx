@@ -33,6 +33,7 @@ export function HomePage() {
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [rules, setRules] = useState<EventRules | null>(null);
   const [heroDarkProgress, setHeroDarkProgress] = useState(0);
+  const [heroExitProgress, setHeroExitProgress] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -90,8 +91,10 @@ export function HomePage() {
       const rect = target.getBoundingClientRect();
       const travel = Math.max(1, rect.height - window.innerHeight);
       const progress = Math.min(1, Math.max(0, -rect.top / travel));
-      const nextDark = progress >= 0.24 && progress < 0.985 ? 1 : 0;
+      const nextDark = Math.min(1, Math.max(0, (progress - 0.16) / 0.08));
+      const nextExit = Math.min(1, Math.max(0, (progress - 0.92) / 0.08));
       setHeroDarkProgress(nextDark);
+      setHeroExitProgress(nextExit);
     };
     const schedule = () => {
       window.cancelAnimationFrame(frame);
@@ -115,21 +118,33 @@ export function HomePage() {
   const eventName = event?.name ?? "Point Project";
   const [headlineTop, headlineBottom] = useMemo(() => splitHeroTitle(eventName), [eventName]);
   const publicFaqs = useMemo(() => faqs.filter((faq) => !isTeamRuleFAQ(faq)), [faqs]);
-  const heroInDarkMode = heroDarkProgress > 0.46;
+  const heroVisibleProgress = Math.max(0, heroDarkProgress * (1 - heroExitProgress));
+  const heroInDarkMode = heroDarkProgress > 0.46 && heroExitProgress < 0.48;
 
   return (
     <div
       className="bg-white text-[#05070d]"
-      style={{ "--hero-dark-progress": heroDarkProgress } as CSSProperties}
+      style={
+        {
+          "--hero-dark-progress": heroDarkProgress,
+          "--hero-exit-progress": heroExitProgress,
+          "--hero-visible-progress": heroVisibleProgress,
+          "--hero-soft-progress": heroVisibleProgress * 0.92,
+          "--hero-star-progress": heroVisibleProgress * 0.54
+        } as CSSProperties
+      }
     >
-      <section id="rubik-scroll-area" className="relative isolate min-h-[285vh] overflow-clip border-b border-dark/10 bg-white">
-        <div className="sticky top-0 h-screen overflow-hidden bg-white">
+      <section id="rubik-scroll-area" className="relative isolate min-h-[310vh] overflow-clip border-b border-dark/10 bg-[#05070d]">
+        <div className="sticky top-0 h-screen overflow-hidden bg-[#05070d]">
+          <div className="absolute inset-0 z-0 bg-white" style={{ opacity: 1 - heroDarkProgress }} aria-hidden="true" />
           <div className="hero-dark-stage absolute inset-0 z-0" aria-hidden="true" />
           <div className="hero-starfield absolute inset-0 z-[1]" aria-hidden="true" />
-          <CubeParticleCloud className="absolute inset-0 z-[3]" cubeCount={360} color="#4da6ff" scrollTarget="#rubik-scroll-area" />
+          <CubeParticleCloud className="absolute inset-0 z-[3]" cubeCount={520} color="#4da6ff" scrollTarget="#rubik-scroll-area" />
           <div className="hero-diagonal-light absolute inset-0 z-[4]" aria-hidden="true" />
+          <div className="hero-aurora-light absolute inset-0 z-[4]" aria-hidden="true" />
           <div className="hero-dark-vignette absolute inset-0 z-[2]" aria-hidden="true" />
           <div className="hero-dark-bottom absolute inset-x-0 bottom-0 z-[2] h-44" aria-hidden="true" />
+          <div className="hero-exit-white absolute inset-0 z-[6]" aria-hidden="true" />
         </div>
 
         <div className="relative z-10 -mt-[100vh]">
@@ -242,21 +257,21 @@ export function HomePage() {
             title={`Jadwal ${eventName}`}
             body="Tahapan dibuat seperti relay: setiap fase punya tanggal, konteks, dan status yang bisa diperbarui dari admin panel."
           />
-          <div className="mt-10 border border-white/10 bg-[#080d16]/92 p-4 sm:p-6">
+          <div className="timeline-tree-panel mt-10">
             {loading ? (
               <TimelineSkeleton />
             ) : timeline.length ? (
-              <ol className="grid gap-4 lg:grid-cols-[repeat(auto-fit,minmax(190px,1fr))]">
+              <ol className="timeline-tree">
                 {timeline.map((item, index) => (
-                  <li key={item.id} className="relative min-w-0 border border-white/10 bg-white/[0.035] p-4 scroll-pop" data-scroll-pop>
-                    <span className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-200">
-                      Phase {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <p className="mt-4 text-xs font-black uppercase tracking-wide text-orange">
-                      {formatRange(item.startDate, item.endDate)}
-                    </p>
-                    <h3 className="mt-3 break-words text-lg font-black">{item.label}</h3>
-                    <p className="mt-3 text-sm leading-6 text-white/55">{item.description}</p>
+                  <li key={item.id} className="timeline-tree-item scroll-pop" data-scroll-pop>
+                    <div className="timeline-tree-marker">
+                      {String(index + 1).padStart(2, "0")}
+                    </div>
+                    <div className="timeline-tree-card">
+                      <p className="timeline-tree-date">{formatRange(item.startDate, item.endDate)}</p>
+                      <h3>{item.label}</h3>
+                      <p>{item.description}</p>
+                    </div>
                   </li>
                 ))}
               </ol>
@@ -449,14 +464,16 @@ function Skeleton({ className = "" }: { className?: string }) {
 
 function TimelineSkeleton() {
   return (
-    <ol className="grid gap-4 lg:grid-cols-[repeat(auto-fit,minmax(190px,1fr))]" aria-label="Memuat timeline">
+    <ol className="timeline-tree" aria-label="Memuat timeline">
       {Array.from({ length: 4 }).map((_, index) => (
-        <li key={index} className="border border-white/10 bg-white/[0.035] p-4">
-          <Skeleton className="h-3 w-24 skeleton-dark" />
-          <Skeleton className="mt-5 h-3 w-28 skeleton-dark" />
-          <Skeleton className="mt-4 h-5 w-36 skeleton-dark" />
-          <Skeleton className="mt-3 h-3 w-full skeleton-dark" />
-          <Skeleton className="mt-2 h-3 w-4/5 skeleton-dark" />
+        <li key={index} className="timeline-tree-item">
+          <div className="timeline-tree-marker">{String(index + 1).padStart(2, "0")}</div>
+          <div className="timeline-tree-card">
+            <Skeleton className="h-3 w-40" />
+            <Skeleton className="mt-4 h-5 w-52" />
+            <Skeleton className="mt-3 h-3 w-full" />
+            <Skeleton className="mt-2 h-3 w-4/5" />
+          </div>
         </li>
       ))}
     </ol>
@@ -517,8 +534,19 @@ function FAQSkeleton() {
 
 function formatRange(startDate: string, endDate: string) {
   if (!startDate && !endDate) return "Tanggal menyusul";
-  if (!startDate || !endDate) return startDate || endDate;
-  return `${startDate} / ${endDate}`;
+  if (!startDate || !endDate) return formatReadableDate(startDate || endDate);
+  if (startDate === endDate) return formatReadableDate(startDate);
+  return `${formatReadableDate(startDate)} - ${formatReadableDate(endDate)}`;
+}
+
+function formatReadableDate(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  });
 }
 
 function splitHeroTitle(title: string): [string, string] {

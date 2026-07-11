@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Filter, Search, Trophy } from "lucide-react";
 import { CustomSelect } from "../components/CustomSelect";
-import { StatusPill } from "../components/Layout";
 import { api } from "../lib/api";
 import { toastError } from "../lib/toast";
 import { announcementPath, winnerPath } from "../lib/winner";
@@ -171,7 +170,6 @@ function NewsCard({ announcement }: { announcement: Announcement }) {
   const hasWinnerDetail = announcement.type === "pemenang";
   const target = announcementPath(announcement.eventId, announcement.id);
   const shownResults = announcement.results.filter((result) => result.teamName).slice(0, 3);
-  const sourceLabel = announcement.source === "instagram" ? "Instagram" : announcement.type;
   const fallbackLabel = announcement.source === "instagram" ? "IG" : "PP";
 
   return (
@@ -195,9 +193,6 @@ function NewsCard({ announcement }: { announcement: Announcement }) {
         <div className="absolute right-4 top-4 bg-white px-3 py-2 text-center shadow-soft">
           <p className="text-sm font-black text-dark">{formatDay(announcement.publishedAt)}</p>
           <p className="text-[10px] font-black uppercase text-primary">{formatMonthYear(announcement.publishedAt)}</p>
-        </div>
-        <div className="absolute bottom-4 left-4">
-          <StatusPill tone={announcement.type === "pemenang" ? "amber" : "teal"}>{sourceLabel}</StatusPill>
         </div>
       </div>
       <div className="p-5">

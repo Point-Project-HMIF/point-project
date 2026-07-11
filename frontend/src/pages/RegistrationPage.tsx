@@ -1,13 +1,25 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Lock, Send, Trash2, UserPlus } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
+  ExternalLink,
+  Lock,
+  QrCode,
+  RefreshCw,
+  Send,
+  Trash2,
+  UserPlus
+} from "lucide-react";
 import clsx from "clsx";
 import { CustomSelect } from "../components/CustomSelect";
 import { SectionHeading, StatusPill } from "../components/Layout";
 import { api } from "../lib/api";
 import { toastError, toastSuccess } from "../lib/toast";
-import type { Category, Event, EventRules, RegistrationPayload, Team, TeamMember } from "../lib/types";
+import type { Category, Event, EventRules, RegistrationPayload, RegistrationPayment, Team, TeamMember } from "../lib/types";
 
-const steps = ["Data Tim", "Anggota", "Kategori", "Verifikasi"];
+const steps = ["Data Tim", "Anggota", "Kategori", "Pembayaran", "Verifikasi"];
 
 const emptyMember = (): TeamMember => ({ name: "", email: "", role: "" });
 const maxAdditionalMembers = (rules: EventRules) => Math.max(rules.maxTeamMembers - 1, 0);
@@ -30,9 +42,13 @@ export function RegistrationPage() {
     leaderPhone: "",
     institution: "",
     members: [],
+    paymentOrderId: "",
     otpCode: ""
   });
   const [loading, setLoading] = useState(false);
+  const [payment, setPayment] = useState<RegistrationPayment | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentChecking, setPaymentChecking] = useState(false);
   const [otpSending, setOtpSending] = useState(false);
   const [otpMessage, setOtpMessage] = useState("");
   const [error, setError] = useState("");
@@ -74,7 +90,16 @@ export function RegistrationPage() {
   const canAddMember = members.length < additionalMemberLimit;
 
   function updateField<K extends keyof RegistrationPayload>(key: K, value: RegistrationPayload[K]) {
-    setForm((current) => ({ ...current, [key]: value, ...(key === "leaderEmail" ? { otpCode: "" } : {}) }));
+    const resetsPayment = key === "name" || key === "leaderEmail" || key === "leaderName";
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === "leaderEmail" ? { otpCode: "" } : {}),
+      ...(resetsPayment ? { paymentOrderId: "" } : {})
+    }));
+    if (resetsPayment) {
+      setPayment(null);
+    }
     if (key === "leaderEmail") {
       setOtpMessage("");
     }
@@ -126,6 +151,9 @@ export function RegistrationPage() {
     if (stepIndex === 2 && (!form.categoryId || !form.batch)) {
       return "Batch dan kategori lomba wajib dipilih.";
     }
+    if (stepIndex === 3 && (payment?.status !== "completed" || !form.paymentOrderId)) {
+      return "Selesaikan pembayaran QRIS sebelum masuk ke tahap verifikasi.";
+    }
     return "";
   }
 
@@ -170,6 +198,11 @@ export function RegistrationPage() {
       showError("Nama dan email ketua wajib diisi sebelum meminta OTP.");
       return;
     }
+    if (payment?.status !== "completed" || !form.paymentOrderId) {
+      showError("Selesaikan pembayaran QRIS sebelum meminta OTP.");
+      setStep(3);
+      return;
+    }
     setOtpSending(true);
     try {
       const response = await api.requestRegistrationOTP({
@@ -186,6 +219,61 @@ export function RegistrationPage() {
     }
   }
 
+  async function createPayment() {
+    setError("");
+    for (let index = 0; index <= 2; index += 1) {
+      const message = getStepError(index);
+      if (message) {
+        showError(message);
+        setStep(index);
+        return;
+      }
+    }
+    setPaymentLoading(true);
+    try {
+      const response = await api.createRegistrationPayment({
+        eventId: form.eventId,
+        teamName: form.name,
+        leaderName: form.leaderName,
+        leaderEmail: form.leaderEmail
+      });
+      setPayment(response);
+      setForm((current) => ({ ...current, paymentOrderId: response.orderId }));
+      toastSuccess(response.status === "completed" ? "Pembayaran sudah terkonfirmasi." : "QRIS pembayaran berhasil dibuat.");
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Gagal membuat QRIS pembayaran.");
+    } finally {
+      setPaymentLoading(false);
+    }
+  }
+
+  async function checkPayment() {
+    setError("");
+    if (!payment?.orderId) {
+      showError("Buat QRIS pembayaran terlebih dahulu.");
+      return;
+    }
+    setPaymentChecking(true);
+    try {
+      const response = await api.checkRegistrationPayment({
+        eventId: form.eventId,
+        leaderEmail: form.leaderEmail,
+        orderId: payment.orderId
+      });
+      setPayment(response);
+      setForm((current) => ({ ...current, paymentOrderId: response.status === "completed" ? response.orderId : "" }));
+      if (response.status === "completed") {
+        toastSuccess("Pembayaran terkonfirmasi. Kamu bisa lanjut ke verifikasi OTP.");
+      } else {
+        toastError(`Pembayaran masih ${paymentStatusLabel(response.status).toLowerCase()}.`);
+      }
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Gagal mengecek status pembayaran.");
+    } finally {
+      setPaymentChecking(false);
+    }
+  }
+
   async function submit(eventForm: FormEvent<HTMLFormElement>) {
     eventForm.preventDefault();
     setError("");
@@ -196,6 +284,11 @@ export function RegistrationPage() {
     const normalizedPhone = normalizeWhatsAppNumber(form.leaderPhone);
     if (!normalizedPhone) {
       showError("Nomor WhatsApp tidak valid. Gunakan format 08xxxxxxxxxx atau +628xxxxxxxxxx.");
+      return;
+    }
+    if (payment?.status !== "completed" || !form.paymentOrderId) {
+      showError("Pembayaran QRIS wajib selesai sebelum pendaftaran dikirim.");
+      setStep(3);
       return;
     }
     if (!/^\d{6}$/.test(form.otpCode.trim())) {
@@ -272,7 +365,7 @@ export function RegistrationPage() {
         <SectionHeading
           eyebrow="Pendaftaran"
           title={`Daftar ${event?.name ?? "Point Project"}`}
-          body="Isi data tim, anggota, kategori, dan tautan karya awal. Panitia akan memverifikasi data melalui dashboard admin."
+          body="Isi data tim, anggota, kategori, pembayaran, lalu verifikasi email ketua sebelum data masuk ke dashboard panitia."
         />
 
         <div className="mt-10 grid gap-8 lg:grid-cols-[0.7fr_1.3fr]">
@@ -513,6 +606,94 @@ export function RegistrationPage() {
 
             {step === 3 ? (
               <div className="grid gap-5">
+                <div className="card border border-primary/15 bg-white p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 text-primary">
+                        <CreditCard size={20} />
+                        <h3 className="font-black">Pembayaran Pendaftaran</h3>
+                      </div>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-dark/65">
+                        Buat QRIS melalui Pakasir, lakukan pembayaran, lalu cek status. Tahap verifikasi OTP baru aktif
+                        setelah pembayaran terkonfirmasi.
+                      </p>
+                    </div>
+                    <StatusPill tone={paymentTone(payment?.status)}>
+                      {payment ? paymentStatusLabel(payment.status) : "Belum dibuat"}
+                    </StatusPill>
+                  </div>
+
+                  <div className="mt-5 grid gap-4 md:grid-cols-3">
+                    <ReadOnlyField label="Nama Tim" value={form.name || "-"} />
+                    <ReadOnlyField label="Email Ketua" value={form.leaderEmail || "-"} />
+                    <ReadOnlyField label="Order ID" value={payment?.orderId || "-"} />
+                  </div>
+
+                  {payment ? (
+                    <div className="mt-5 grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+                      <div className="card border border-dark/10 bg-light p-4 text-center">
+                        {payment.paymentNumber ? (
+                          <img
+                            src={qrImageUrl(payment.paymentNumber)}
+                            alt={`QRIS pembayaran ${payment.orderId}`}
+                            className="mx-auto h-56 w-56 bg-white p-3"
+                          />
+                        ) : (
+                          <div className="mx-auto grid h-56 w-56 place-items-center bg-white text-dark/45">
+                            <QrCode size={64} />
+                          </div>
+                        )}
+                        <p className="mt-3 text-xs font-bold text-dark/55">Scan QRIS atau buka link Pakasir.</p>
+                      </div>
+                      <div className="card border border-dark/10 bg-light p-5">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <ReadOnlyField label="Nominal" value={formatCurrency(payment.amount)} />
+                          <ReadOnlyField label="Total Bayar" value={formatCurrency(payment.totalPayment)} />
+                          <ReadOnlyField label="Metode" value={payment.paymentMethod || "QRIS"} />
+                          <ReadOnlyField label="Kedaluwarsa" value={formatDateTime(payment.expiredAt)} />
+                        </div>
+                        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                          {payment.paymentUrl ? (
+                            <a className="btn-secondary" href={payment.paymentUrl} target="_blank" rel="noreferrer">
+                              <ExternalLink size={18} />
+                              Buka Pakasir
+                            </a>
+                          ) : null}
+                          <button type="button" className="btn-primary" onClick={checkPayment} disabled={paymentChecking}>
+                            <RefreshCw size={18} className={clsx(paymentChecking && "animate-spin")} />
+                            {paymentChecking ? "Mengecek..." : "Cek Pembayaran"}
+                          </button>
+                        </div>
+                        {payment.status !== "completed" ? (
+                          <p className="mt-4 text-sm leading-6 text-dark/60">
+                            Setelah membayar, tekan <span className="font-black text-dark">Cek Pembayaran</span> untuk
+                            membuka tahap verifikasi.
+                          </p>
+                        ) : (
+                          <p className="mt-4 text-sm font-bold text-primary">
+                            Pembayaran sudah masuk. Silakan lanjut ke verifikasi email.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-5 rounded-md border border-dashed border-dark/20 bg-light p-5">
+                      <p className="text-sm leading-6 text-dark/65">
+                        QRIS akan dibuat untuk tim <span className="font-black text-dark">{form.name || "-"}</span>.
+                        Pastikan data tim dan email ketua sudah benar karena pembayaran terikat ke data ini.
+                      </p>
+                      <button type="button" className="btn-primary mt-4" onClick={createPayment} disabled={paymentLoading}>
+                        <QrCode size={18} />
+                        {paymentLoading ? "Membuat QRIS..." : "Buat QRIS Pakasir"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {step === 4 ? (
+              <div className="grid gap-5">
                 <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -578,6 +759,47 @@ function normalizeWhatsAppNumber(value: string) {
       ? `+${digits}`
       : "";
   return /^\+628[0-9]{8,11}$/.test(normalized) ? normalized : "";
+}
+
+function paymentStatusLabel(status = "") {
+  const normalized = status.toLowerCase();
+  if (normalized === "completed") return "Lunas";
+  if (normalized === "expired") return "Kedaluwarsa";
+  if (normalized === "failed") return "Gagal";
+  if (normalized === "cancelled") return "Dibatalkan";
+  return "Menunggu";
+}
+
+function paymentTone(status = ""): "teal" | "amber" | "orange" | "dark" {
+  const normalized = status.toLowerCase();
+  if (normalized === "completed") return "teal";
+  if (normalized === "expired" || normalized === "failed" || normalized === "cancelled") return "orange";
+  return "amber";
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0
+  }).format(value || 0);
+}
+
+function formatDateTime(value: string) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function qrImageUrl(value: string) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=2&data=${encodeURIComponent(value)}`;
 }
 
 function isValidWhatsAppNumber(value: string) {

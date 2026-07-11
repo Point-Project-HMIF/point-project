@@ -139,18 +139,19 @@ type Team struct {
 }
 
 type RegistrationRequest struct {
-	EventID      string       `json:"eventId"`
-	CategoryID   string       `json:"categoryId"`
-	Name         string       `json:"name"`
-	Batch        int          `json:"batch"`
-	LeaderName   string       `json:"leaderName"`
-	LeaderEmail  string       `json:"leaderEmail"`
-	LeaderPhone  string       `json:"leaderPhone"`
-	Institution  string       `json:"institution"`
-	Members      []TeamMember `json:"members"`
-	ProposalURL  string       `json:"proposalUrl"`
-	PrototypeURL string       `json:"prototypeUrl"`
-	OTPCode      string       `json:"otpCode"`
+	EventID        string       `json:"eventId"`
+	CategoryID     string       `json:"categoryId"`
+	Name           string       `json:"name"`
+	Batch          int          `json:"batch"`
+	LeaderName     string       `json:"leaderName"`
+	LeaderEmail    string       `json:"leaderEmail"`
+	LeaderPhone    string       `json:"leaderPhone"`
+	Institution    string       `json:"institution"`
+	Members        []TeamMember `json:"members"`
+	ProposalURL    string       `json:"proposalUrl"`
+	PrototypeURL   string       `json:"prototypeUrl"`
+	OTPCode        string       `json:"otpCode"`
+	PaymentOrderID string       `json:"paymentOrderId"`
 }
 
 type RegistrationOTPRequest struct {
@@ -162,6 +163,36 @@ type RegistrationOTPRequest struct {
 type RegistrationOTPResponse struct {
 	Message   string `json:"message"`
 	ExpiresIn int    `json:"expiresIn"`
+}
+
+type RegistrationPaymentRequest struct {
+	EventID     string `json:"eventId"`
+	TeamName    string `json:"teamName"`
+	LeaderName  string `json:"leaderName"`
+	LeaderEmail string `json:"leaderEmail"`
+}
+
+type RegistrationPaymentCheckRequest struct {
+	EventID     string `json:"eventId"`
+	LeaderEmail string `json:"leaderEmail"`
+	OrderID     string `json:"orderId"`
+}
+
+type RegistrationPayment struct {
+	OrderID       string `json:"orderId"`
+	EventID       string `json:"eventId"`
+	LeaderEmail   string `json:"leaderEmail"`
+	TeamName      string `json:"teamName"`
+	Amount        int    `json:"amount"`
+	Fee           int    `json:"fee"`
+	TotalPayment  int    `json:"totalPayment"`
+	PaymentMethod string `json:"paymentMethod"`
+	PaymentNumber string `json:"paymentNumber"`
+	PaymentURL    string `json:"paymentUrl"`
+	Status        string `json:"status"`
+	ExpiredAt     string `json:"expiredAt"`
+	CompletedAt   string `json:"completedAt"`
+	CreatedAt     string `json:"createdAt"`
 }
 
 type Submission struct {

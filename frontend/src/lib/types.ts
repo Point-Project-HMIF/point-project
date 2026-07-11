@@ -131,7 +131,38 @@ export type RegistrationPayload = {
   leaderPhone: string;
   institution: string;
   members: TeamMember[];
+  paymentOrderId: string;
   otpCode: string;
+};
+
+export type RegistrationPaymentPayload = {
+  eventId: string;
+  teamName: string;
+  leaderName: string;
+  leaderEmail: string;
+};
+
+export type RegistrationPaymentCheckPayload = {
+  eventId: string;
+  leaderEmail: string;
+  orderId: string;
+};
+
+export type RegistrationPayment = {
+  orderId: string;
+  eventId: string;
+  leaderEmail: string;
+  teamName: string;
+  amount: number;
+  fee: number;
+  totalPayment: number;
+  paymentMethod: string;
+  paymentNumber: string;
+  paymentUrl: string;
+  status: string;
+  expiredAt: string;
+  completedAt: string;
+  createdAt: string;
 };
 
 export type RegistrationOTPPayload = {

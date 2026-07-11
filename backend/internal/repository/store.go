@@ -28,6 +28,9 @@ type Store interface {
 	UpsertInstagramAnnouncements(ctx context.Context, items []models.InstagramAnnouncementInput) (int, error)
 	CreateRegistrationOTP(ctx context.Context, email, code, requestIP, userAgent string) error
 	ParticipantEmailExists(ctx context.Context, eventID, email string) (bool, error)
+	SaveRegistrationPayment(ctx context.Context, payment models.RegistrationPayment) (models.RegistrationPayment, error)
+	GetRegistrationPayment(ctx context.Context, orderID string) (models.RegistrationPayment, error)
+	UpdateRegistrationPaymentStatus(ctx context.Context, payment models.RegistrationPayment) (models.RegistrationPayment, error)
 	CreateTeam(ctx context.Context, input models.RegistrationRequest) (models.Team, error)
 	GetDashboard(ctx context.Context, teamID string) (models.Dashboard, error)
 	GetTeamDetail(ctx context.Context, teamID string) (models.TeamDetail, error)

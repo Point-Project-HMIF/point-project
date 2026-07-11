@@ -732,6 +732,87 @@ func (s *PostgresStore) ParticipantEmailExists(ctx context.Context, eventID, ema
 	return participantEmailExists(ctx, s.db, eventID, email)
 }
 
+func (s *PostgresStore) SaveRegistrationPayment(ctx context.Context, payment models.RegistrationPayment) (models.RegistrationPayment, error) {
+	payment.LeaderEmail = strings.ToLower(strings.TrimSpace(payment.LeaderEmail))
+	payment.Status = normalizePaymentStatus(payment.Status)
+	if payment.Status == "" {
+		payment.Status = "pending"
+	}
+	row := s.db.QueryRow(ctx, `
+		insert into registration_payments (
+			event_id, order_id, leader_email, team_name, amount, fee, total_payment,
+			payment_method, payment_number, payment_url, status, expired_at, completed_at
+		)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, nullif($12, '')::timestamptz, nullif($13, '')::timestamptz)
+		on conflict (order_id) do update
+		set fee = excluded.fee,
+		    total_payment = excluded.total_payment,
+		    payment_method = excluded.payment_method,
+		    payment_number = excluded.payment_number,
+		    payment_url = excluded.payment_url,
+		    status = excluded.status,
+		    expired_at = excluded.expired_at,
+		    completed_at = excluded.completed_at,
+		    updated_at = now()
+		returning order_id, event_id::text, leader_email, team_name, amount, fee, total_payment,
+		          payment_method, payment_number, payment_url, status,
+		          coalesce(to_char(expired_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), ''),
+		          coalesce(to_char(completed_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), ''),
+		          to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+	`,
+		payment.EventID,
+		payment.OrderID,
+		payment.LeaderEmail,
+		strings.TrimSpace(payment.TeamName),
+		payment.Amount,
+		payment.Fee,
+		payment.TotalPayment,
+		payment.PaymentMethod,
+		payment.PaymentNumber,
+		payment.PaymentURL,
+		payment.Status,
+		payment.ExpiredAt,
+		payment.CompletedAt,
+	)
+	return scanRegistrationPayment(row)
+}
+
+func (s *PostgresStore) GetRegistrationPayment(ctx context.Context, orderID string) (models.RegistrationPayment, error) {
+	row := s.db.QueryRow(ctx, `
+		select order_id, event_id::text, leader_email, team_name, amount, fee, total_payment,
+		       payment_method, payment_number, payment_url, status,
+		       coalesce(to_char(expired_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), ''),
+		       coalesce(to_char(completed_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), ''),
+		       to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+		from registration_payments
+		where order_id = $1
+	`, strings.TrimSpace(orderID))
+	return scanRegistrationPayment(row)
+}
+
+func (s *PostgresStore) UpdateRegistrationPaymentStatus(ctx context.Context, payment models.RegistrationPayment) (models.RegistrationPayment, error) {
+	status := normalizePaymentStatus(payment.Status)
+	if status == "" {
+		status = "pending"
+	}
+	row := s.db.QueryRow(ctx, `
+		update registration_payments
+		set status = $2,
+		    fee = greatest(fee, $3),
+		    total_payment = case when $4 > 0 then $4 else total_payment end,
+		    payment_method = coalesce(nullif($5, ''), payment_method),
+		    completed_at = coalesce(nullif($6, '')::timestamptz, completed_at),
+		    updated_at = now()
+		where order_id = $1
+		returning order_id, event_id::text, leader_email, team_name, amount, fee, total_payment,
+		          payment_method, payment_number, payment_url, status,
+		          coalesce(to_char(expired_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), ''),
+		          coalesce(to_char(completed_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'), ''),
+		          to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+	`, strings.TrimSpace(payment.OrderID), status, payment.Fee, payment.TotalPayment, payment.PaymentMethod, payment.CompletedAt)
+	return scanRegistrationPayment(row)
+}
+
 func (s *PostgresStore) CreateTeam(ctx context.Context, input models.RegistrationRequest) (models.Team, error) {
 	eventID := input.EventID
 	if eventID == "" {
@@ -806,6 +887,9 @@ func (s *PostgresStore) CreateTeam(ctx context.Context, input models.Registratio
 		if exists {
 			return models.Team{}, fmt.Errorf("email peserta %s sudah terdaftar pada event ini", member.Email)
 		}
+	}
+	if err := ensureRegistrationPaymentCompleted(ctx, tx, eventID, input.LeaderEmail, input.PaymentOrderID); err != nil {
+		return models.Team{}, err
 	}
 	if err := verifyRegistrationOTP(ctx, tx, input.LeaderEmail, input.OTPCode); err != nil {
 		return models.Team{}, err
@@ -1079,6 +1163,71 @@ func participantEmailExists(ctx context.Context, q queryRower, eventID, email st
 		)
 	`, eventID, email).Scan(&exists)
 	return exists, err
+}
+
+func ensureRegistrationPaymentCompleted(ctx context.Context, q queryRower, eventID, email, orderID string) error {
+	orderID = strings.TrimSpace(orderID)
+	email = strings.ToLower(strings.TrimSpace(email))
+	if orderID == "" {
+		return errors.New("pembayaran pendaftaran wajib diselesaikan sebelum verifikasi")
+	}
+	var status string
+	err := q.QueryRow(ctx, `
+		select status
+		from registration_payments
+		where order_id = $1
+		  and event_id = $2
+		  and lower(leader_email) = lower($3)
+		limit 1
+	`, orderID, eventID, email).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return errors.New("order pembayaran tidak valid untuk email ketua ini")
+	}
+	if err != nil {
+		return err
+	}
+	if status != "completed" {
+		return errors.New("pembayaran belum terkonfirmasi")
+	}
+	return nil
+}
+
+func scanRegistrationPayment(row pgx.Row) (models.RegistrationPayment, error) {
+	var payment models.RegistrationPayment
+	err := row.Scan(
+		&payment.OrderID,
+		&payment.EventID,
+		&payment.LeaderEmail,
+		&payment.TeamName,
+		&payment.Amount,
+		&payment.Fee,
+		&payment.TotalPayment,
+		&payment.PaymentMethod,
+		&payment.PaymentNumber,
+		&payment.PaymentURL,
+		&payment.Status,
+		&payment.ExpiredAt,
+		&payment.CompletedAt,
+		&payment.CreatedAt,
+	)
+	return payment, err
+}
+
+func normalizePaymentStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "completed", "paid", "success":
+		return "completed"
+	case "expired":
+		return "expired"
+	case "cancelled", "canceled":
+		return "cancelled"
+	case "failed":
+		return "failed"
+	case "pending", "":
+		return "pending"
+	default:
+		return "pending"
+	}
 }
 
 func (s *PostgresStore) teamSubmissionStages(ctx context.Context, team models.Team) ([]models.TeamSubmissionStage, error) {

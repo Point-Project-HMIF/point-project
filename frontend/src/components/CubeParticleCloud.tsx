@@ -28,7 +28,7 @@ type CubeParticle = {
 
 export function CubeParticleCloud({
   className = "",
-  cubeCount = 280,
+  cubeCount = 520,
   color = "#4da6ff",
   scrollTarget
 }: CubeParticleCloudProps) {
@@ -39,14 +39,14 @@ export function CubeParticleCloud({
     if (!container) return undefined;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 90);
-    camera.position.set(0, 0.15, 8.4);
+    const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 160);
+    camera.position.set(0, 0.04, 7.4);
 
     const renderer = new THREE.WebGLRenderer({
       alpha: true,
       antialias: true,
       powerPreference: "high-performance",
-      preserveDrawingBuffer: true
+      preserveDrawingBuffer: false
     });
     renderer.setClearColor(0x000000, 0);
     renderer.sortObjects = true;
@@ -68,41 +68,54 @@ export function CubeParticleCloud({
     const solidBlendColor = new THREE.Color("#05070d");
     const tempColor = new THREE.Color();
     const tempSolidColor = new THREE.Color();
-    const maxScatterDistance = 5.4;
-    const gridSize = Math.max(5, Math.ceil(Math.cbrt(cubeCount)));
-    const gridSpacing = 0.45;
+    const maxScatterDistance = 7.4;
+    const gridSize = Math.max(7, Math.ceil(Math.cbrt(cubeCount)));
+    const gridSpacing = 0.36;
+    const verticalSpacing = 0.36;
     const gridOffset = (gridSize - 1) / 2;
     const gridPositions: THREE.Vector3[] = [];
 
     for (let x = 0; x < gridSize; x += 1) {
       for (let y = 0; y < gridSize; y += 1) {
         for (let z = 0; z < gridSize; z += 1) {
+          const height01 = y / Math.max(1, gridSize - 1);
+          const taper = 1.48 - height01 * 0.62;
+          const sideNoise = 0.92 + Math.random() * 0.18;
           gridPositions.push(
             new THREE.Vector3(
-              (x - gridOffset) * gridSpacing,
-              (y - gridOffset) * gridSpacing,
-              (z - gridOffset) * gridSpacing
+              (x - gridOffset) * gridSpacing * taper * sideNoise,
+              (y - gridOffset) * verticalSpacing - 0.34,
+              (z - gridOffset) * gridSpacing * taper * sideNoise
             )
           );
         }
       }
     }
 
-    shuffle(gridPositions);
+    const shellPositions = gridPositions.filter((position) => {
+      const normalizedX = Math.abs(position.x / gridSpacing);
+      const normalizedY = Math.abs(position.y / gridSpacing);
+      const normalizedZ = Math.abs(position.z / gridSpacing);
+      return Math.max(normalizedX, normalizedY, normalizedZ) >= gridOffset - 0.75;
+    });
+    const innerPositions = gridPositions.filter((position) => !shellPositions.includes(position));
+    shuffle(shellPositions);
+    shuffle(innerPositions);
+    gridPositions.splice(0, gridPositions.length, ...shellPositions, ...innerPositions);
 
     for (let index = 0; index < Math.min(cubeCount, gridPositions.length); index += 1) {
       const rawGridPosition = gridPositions[index];
       const gridPosition = rawGridPosition.clone();
-      gridPosition.y *= 0.86;
-      gridPosition.x += (Math.random() - 0.5) * 0.035;
-      gridPosition.y += (Math.random() - 0.5) * 0.035;
-      gridPosition.z += (Math.random() - 0.5) * 0.035;
+      gridPosition.y *= 1.04;
+      gridPosition.x += (Math.random() - 0.5) * 0.055;
+      gridPosition.y += (Math.random() - 0.5) * 0.05;
+      gridPosition.z += (Math.random() - 0.5) * 0.055;
 
       const direction = rawGridPosition.lengthSq() > 0 ? rawGridPosition.clone().normalize() : randomDirection();
-      const coreParticle = Math.random() < 0.58;
-      const displacement = coreParticle ? 0.2 + Math.random() * 0.75 : 1.15 + Math.random() * 3.1;
+      const coreParticle = Math.random() < 0.52;
+      const displacement = coreParticle ? 0.38 + Math.random() * 0.82 : 1.35 + Math.random() * 3.0;
       const randomDrift = randomDirection().multiplyScalar(
-        coreParticle ? 0.2 + Math.random() * 0.42 : 0.55 + Math.random() * 1.55
+        coreParticle ? 0.26 + Math.random() * 0.62 : 0.68 + Math.random() * 1.7
       );
 
       // Kepadatan gumpalan: posisi grid membentuk kubus besar dulu, lalu scatterPosition
@@ -111,12 +124,15 @@ export function CubeParticleCloud({
         .clone()
         .add(direction.multiplyScalar(displacement))
         .add(randomDrift);
-      scatterPosition.y *= 0.72 + Math.random() * 0.16;
-      scatterPosition.x += (Math.random() - 0.5) * 0.34;
-      scatterPosition.z += (Math.random() - 0.5) * 0.42;
+      scatterPosition.y *= 0.82 + Math.random() * 0.18;
+      scatterPosition.x += (Math.random() - 0.5) * 0.55;
+      scatterPosition.z += (Math.random() - 0.5) * 0.7;
 
       const scatterDistance = Math.min(scatterPosition.length(), maxScatterDistance);
-      const cubeSize = 0.12 + Math.random() * 0.2 + (coreParticle ? 0.035 : 0);
+      const heroBlock = Math.random() < 0.08;
+      const cubeSize = heroBlock
+        ? 0.24 + Math.random() * 0.26
+        : 0.11 + Math.random() * 0.15 + (coreParticle ? 0.035 : 0);
       const solidMaterial = new THREE.MeshBasicMaterial({
         color: solidColor,
         transparent: true,
@@ -150,7 +166,7 @@ export function CubeParticleCloud({
       cubeGroup.add(mesh);
       cubeGroup.add(edges);
       cubeGroup.position.copy(gridPosition);
-      cubeGroup.scale.setScalar(cubeSize * 0.72);
+      cubeGroup.scale.setScalar(cubeSize * 0.76);
       cubeGroup.rotation.set(gridRotation.x, gridRotation.y, gridRotation.z);
       cubeGroup.visible = false;
       group.add(cubeGroup);
@@ -182,6 +198,7 @@ export function CubeParticleCloud({
     const pointer = { x: 0, y: 0 };
     const smoothPointer = { x: 0, y: 0 };
     const scrollProgress = { value: 0 };
+    const smoothProgress = { value: 0 };
     const clock = new THREE.Clock();
     const worldPosition = new THREE.Vector3();
     const displayPosition = new THREE.Vector3();
@@ -234,24 +251,40 @@ export function CubeParticleCloud({
     const animate = () => {
       const delta = Math.min(clock.getDelta(), 0.04);
       const elapsed = clock.elapsedTime;
-      const progress = scrollProgress.value;
-      const reveal = smoothstep(0.24, 0.4, progress);
-      const explode = smoothstep(0.45, 0.68, progress);
-      const operatingBlend = smoothstep(0.72, 0.9, progress);
-      const cardZoom = smoothstep(0.58, 0.74, progress) * (1 - smoothstep(0.84, 0.94, progress));
-      const fadeOut = 1 - smoothstep(0.82, 0.94, progress);
+      const smoothing = 1 - Math.exp(-delta * 7.2);
+      smoothProgress.value += (scrollProgress.value - smoothProgress.value) * smoothing;
+      const progress = smoothProgress.value;
+      const reveal = smoothstep(0.14, 0.22, progress);
+      const explode = smoothstep(0.18, 0.34, progress);
+      const operatingBlend = smoothstep(0.58, 0.9, progress);
+      const cardZoom = smoothstep(0.2, 0.58, progress);
+      const fadeOut = 1;
       const visibility = reveal * fadeOut;
-      const zoomScale = 0.72 + reveal * 0.22 + explode * 0.52 + cardZoom * 0.62;
+      const scrollZoom = smoothstep(0.18, 0.56, progress);
+      // Kecepatan animasi scroll utama: pulse membuat kubus besar terasa membesar lalu mengecil.
+      const pulsePhase = smoothstep(0.18, 0.74, progress);
+      const cubePulse = Math.sin(pulsePhase * Math.PI);
+      const zoomScale = 0.98 + reveal * 0.18 + scrollZoom * 0.72 + cubePulse * 0.18;
+
+      camera.position.z = THREE.MathUtils.lerp(7.4, 4.55, scrollZoom);
+      camera.position.y = THREE.MathUtils.lerp(0.06, -0.06, scrollZoom);
+      const cameraFOV = THREE.MathUtils.lerp(42, 52, smoothstep(0.18, 0.58, progress));
+      if (Math.abs(camera.fov - cameraFOV) > 0.08) {
+        camera.fov = cameraFOV;
+        camera.updateProjectionMatrix();
+      }
 
       smoothPointer.x += (pointer.x - smoothPointer.x) * 0.045;
       smoothPointer.y += (pointer.y - smoothPointer.y) * 0.045;
 
-      // Kecepatan animasi gumpalan: nilai ini mengatur auto-rotate sumbu Y.
-      group.rotation.y += delta * (0.055 + reveal * 0.085);
-      group.rotation.x += (smoothPointer.y * 0.16 - group.rotation.x) * 0.035;
-      group.rotation.z += (-smoothPointer.x * 0.042 - group.rotation.z) * 0.035;
+      // Kecepatan animasi gumpalan: autoYaw memberi flow konstan, pointer cuma jadi bias halus.
+      const autoYaw = elapsed * (0.04 + reveal * 0.035);
+      group.rotation.y += (autoYaw + smoothPointer.x * 0.12 - group.rotation.y) * 0.028;
+      group.rotation.x += (Math.sin(elapsed * 0.22) * 0.055 + smoothPointer.y * 0.1 - group.rotation.x) * 0.035;
+      group.rotation.z += (-smoothPointer.x * 0.028 - group.rotation.z) * 0.035;
       group.position.x += (smoothPointer.x * (0.1 + explode * 0.18) - group.position.x) * 0.045;
-      group.position.y += (smoothPointer.y * 0.08 - operatingBlend * 0.12 - group.position.y) * 0.045;
+      group.position.y += (-0.62 + smoothPointer.y * 0.1 - operatingBlend * 0.06 - group.position.y) * 0.045;
+      group.position.z += (-cardZoom * 0.82 - group.position.z) * 0.045;
       group.scale.setScalar(zoomScale);
 
       tempColor.copy(edgeColor).lerp(edgeBlendColor, operatingBlend * 0.68);
@@ -260,18 +293,23 @@ export function CubeParticleCloud({
       particles.forEach((particle) => {
         particle.group.visible = visibility > 0.006;
 
-        displayPosition.copy(particle.gridPosition).lerp(particle.scatterPosition, explode);
+        displayPosition.copy(particle.gridPosition).lerp(particle.scatterPosition, explode * 0.92);
         particle.group.position.x = displayPosition.x + Math.sin(elapsed * 0.32 + particle.phase) * 0.018;
         particle.group.position.y =
           displayPosition.y + Math.sin(elapsed * particle.floatSpeed + particle.phase) * particle.floatAmplitude;
         particle.group.position.z = displayPosition.z + Math.cos(elapsed * 0.28 + particle.phase) * 0.026;
-        const spin = 0.18 + explode * 0.9;
+        const spin = 0.16 + explode * 0.22;
         particle.group.rotation.set(
-          THREE.MathUtils.lerp(particle.gridRotation.x, particle.scatterRotation.x, explode) + elapsed * particle.rotationSpeed.x * spin,
-          THREE.MathUtils.lerp(particle.gridRotation.y, particle.scatterRotation.y, explode) + elapsed * particle.rotationSpeed.y * spin,
-          THREE.MathUtils.lerp(particle.gridRotation.z, particle.scatterRotation.z, explode) + elapsed * particle.rotationSpeed.z * spin
+          THREE.MathUtils.lerp(particle.gridRotation.x, particle.scatterRotation.x, explode * 0.18) +
+            elapsed * particle.rotationSpeed.x * spin,
+          THREE.MathUtils.lerp(particle.gridRotation.y, particle.scatterRotation.y, explode * 0.18) +
+            elapsed * particle.rotationSpeed.y * spin,
+          THREE.MathUtils.lerp(particle.gridRotation.z, particle.scatterRotation.z, explode * 0.18) +
+            elapsed * particle.rotationSpeed.z * spin
         );
-        particle.group.scale.setScalar(particle.baseScale * (0.72 + reveal * 0.2 + Math.sin(elapsed * 0.9 + particle.phase) * 0.03));
+        particle.group.scale.setScalar(
+          particle.baseScale * (0.82 + reveal * 0.24 + cubePulse * 0.13 + Math.sin(elapsed * 0.9 + particle.phase) * 0.012)
+        );
 
         particle.group.getWorldPosition(worldPosition);
         const depth = THREE.MathUtils.clamp((worldPosition.z + maxScatterDistance) / (maxScatterDistance * 2), 0, 1);
@@ -290,8 +328,8 @@ export function CubeParticleCloud({
         );
         particle.solidMaterial.color.copy(tempSolidColor);
         particle.edgeMaterial.color.copy(tempColor);
-        particle.solidMaterial.opacity = visibility * THREE.MathUtils.clamp(0.34 + brightness * 0.32, 0.38, 0.68);
-        particle.edgeMaterial.opacity = visibility * THREE.MathUtils.clamp(0.34 + brightness * 0.66, 0.6, 1);
+        particle.solidMaterial.opacity = visibility * THREE.MathUtils.clamp(0.42 + brightness * 0.34, 0.46, 0.78);
+        particle.edgeMaterial.opacity = visibility * THREE.MathUtils.clamp(0.46 + brightness * 0.62, 0.68, 1);
       });
 
       renderer.render(scene, camera);

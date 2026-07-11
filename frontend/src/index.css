@@ -29,10 +29,21 @@
   --clip-card-corner: 16px;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   min-width: 320px;
   background: #fff;
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: "Tektur", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
 button,
@@ -579,14 +590,13 @@ textarea:focus-visible {
   opacity: 0;
   transform: translateY(7vh) rotate(-10deg) scale(0.76);
   transition:
-    --sector-from 260ms cubic-bezier(0.16, 1, 0.3, 1),
     opacity 420ms ease 70ms,
     transform 780ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .radial-nav-overlay.is-open .radial-menu-panel {
   opacity: 1;
-  transform: translateY(2vh) rotate(-1deg) scale(1);
+  transform: translateY(2vh) rotate(0deg) scale(1);
 }
 
 .radial-menu-panel::before {
@@ -641,13 +651,11 @@ textarea:focus-visible {
     conic-gradient(
       from var(--sector-from, -36deg),
       rgba(255, 255, 255, 0.26) 0deg,
-      rgba(255, 255, 255, 0.38) 34deg,
-      rgba(255, 255, 255, 0.26) 72deg,
-      transparent 72.5deg 360deg
-    );
-  transition:
-    --sector-from 260ms cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 150ms ease;
+      rgba(255, 255, 255, 0.38) calc(var(--sector-size, 90deg) * 0.5),
+      rgba(255, 255, 255, 0.26) var(--sector-size, 90deg),
+      transparent calc(var(--sector-size, 90deg) + 0.5deg) 360deg
+  );
+  transition: opacity 150ms ease;
 }
 
 .radial-menu-panel.has-hover .radial-sector-highlight {
@@ -658,9 +666,9 @@ textarea:focus-visible {
   opacity: 0.56;
   background:
     repeating-conic-gradient(
-      from -36deg,
+      from calc(-90deg + (var(--sector-size, 90deg) / 2)),
       rgba(255, 255, 255, 0.14) 0deg 0.5deg,
-      transparent 0.5deg 72deg
+      transparent 0.5deg var(--sector-size, 90deg)
     ),
     radial-gradient(circle, transparent 0 58%, rgba(255, 255, 255, 0.1) 58.15% 58.55%, transparent 58.7%);
 }
@@ -926,28 +934,55 @@ textarea:focus-visible {
 
 .hero-dark-stage {
   background: #05070d;
-  opacity: var(--hero-dark-progress, 0);
+  opacity: var(--hero-visible-progress, 0);
 }
 
 .hero-dark-vignette {
   background:
-    linear-gradient(90deg, rgba(5, 7, 13, 0.88) 0%, rgba(5, 7, 13, 0.42) 45%, rgba(5, 7, 13, 0.74) 100%),
-    radial-gradient(circle at 52% 48%, transparent 0 28%, rgba(5, 7, 13, 0.24) 56%, rgba(5, 7, 13, 0.7) 100%);
-  opacity: var(--hero-dark-progress, 0);
+    linear-gradient(90deg, rgba(5, 7, 13, 0.48) 0%, rgba(5, 7, 13, 0.34) 34%, rgba(5, 7, 13, 0.88) 100%),
+    radial-gradient(circle at 52% 54%, transparent 0 28%, rgba(5, 7, 13, 0.18) 52%, rgba(5, 7, 13, 0.78) 100%);
+  opacity: var(--hero-visible-progress, 0);
 }
 
 .hero-dark-bottom {
   background: linear-gradient(0deg, #05070d, transparent);
-  opacity: var(--hero-dark-progress, 0);
+  opacity: var(--hero-visible-progress, 0);
 }
 
 .hero-diagonal-light {
   background:
-    linear-gradient(128deg, rgba(77, 166, 255, 0.36) 0%, rgba(77, 166, 255, 0.18) 19%, transparent 47%),
-    radial-gradient(ellipse at 7% 2%, rgba(126, 190, 255, 0.42), rgba(24, 93, 153, 0.2) 26%, transparent 56%);
-  filter: blur(13px);
+    linear-gradient(128deg, rgba(113, 198, 255, 0.36) 0%, rgba(77, 166, 255, 0.16) 17%, transparent 39%),
+    radial-gradient(ellipse at 6% 0%, rgba(154, 216, 255, 0.46), rgba(24, 93, 153, 0.18) 22%, transparent 48%);
+  filter: blur(18px);
   mix-blend-mode: screen;
-  opacity: calc(var(--hero-dark-progress, 0) * 0.92);
+  opacity: calc(var(--hero-soft-progress, 0) * 0.68);
+}
+
+.hero-aurora-light {
+  background:
+    conic-gradient(
+      from 226deg at 46% 62%,
+      transparent 0deg,
+      rgba(77, 166, 255, 0.03) 36deg,
+      rgba(77, 166, 255, 0.22) 58deg,
+      rgba(105, 231, 255, 0.18) 82deg,
+      transparent 122deg,
+      transparent 360deg
+    ),
+    radial-gradient(ellipse at 48% 64%, rgba(77, 166, 255, 0.25), rgba(10, 62, 117, 0.16) 24%, transparent 52%),
+    linear-gradient(131deg, rgba(151, 214, 255, 0.12) 0 13%, rgba(77, 166, 255, 0.13) 27%, transparent 52%);
+  filter: blur(24px) saturate(1.24);
+  mix-blend-mode: screen;
+  opacity: calc(var(--hero-soft-progress, 0) * 0.82);
+  transform: translate3d(-2%, -3%, 0) rotate(-3deg);
+  animation: heroAuroraDrift 8s ease-in-out infinite alternate;
+  will-change: opacity, transform;
+}
+
+.hero-exit-white {
+  background: #fff;
+  opacity: var(--hero-exit-progress, 0);
+  pointer-events: none;
 }
 
 .hero-starfield {
@@ -963,7 +998,7 @@ textarea:focus-visible {
     137px 137px,
     211px 211px,
     293px 293px;
-  opacity: calc(var(--hero-dark-progress, 0) * 0.54);
+  opacity: var(--hero-star-progress, 0);
   -webkit-mask-image: radial-gradient(circle at 50% 48%, #000 0 42%, rgba(0, 0, 0, 0.62) 62%, transparent 100%);
   mask-image: radial-gradient(circle at 50% 48%, #000 0 42%, rgba(0, 0, 0, 0.62) 62%, transparent 100%);
 }
@@ -1029,7 +1064,122 @@ textarea:focus-visible {
 
 .hero-cube-phase {
   margin-top: 46vh;
-  opacity: var(--hero-dark-progress, 0);
+  opacity: var(--hero-visible-progress, 0);
+}
+
+.timeline-tree-panel {
+  --clip-card-corner: 20px;
+  border: 1px solid rgba(5, 7, 13, 0.1);
+  background:
+    linear-gradient(90deg, rgba(0, 111, 174, 0.055) 1px, transparent 1px),
+    linear-gradient(rgba(0, 111, 174, 0.055) 1px, transparent 1px),
+    #fff;
+  background-size: 34px 34px;
+  box-shadow: 0 16px 44px rgba(5, 7, 13, 0.055);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--clip-card-corner)) 0,
+    100% var(--clip-card-corner),
+    100% 100%,
+    var(--clip-card-corner) 100%,
+    0 calc(100% - var(--clip-card-corner))
+  );
+  padding: clamp(1rem, 3vw, 2rem);
+}
+
+.timeline-tree {
+  position: relative;
+  display: grid;
+  gap: 1.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline-tree::before {
+  content: "";
+  position: absolute;
+  left: 22px;
+  top: 18px;
+  bottom: 18px;
+  width: 2px;
+  background: linear-gradient(180deg, transparent, rgba(0, 111, 174, 0.34), transparent);
+}
+
+.timeline-tree-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.timeline-tree-marker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 46px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid rgba(0, 111, 174, 0.24);
+  background: #fff;
+  color: #006fae;
+  font-family: "Tektur", "Plus Jakarta Sans", sans-serif;
+  font-size: 0.78rem;
+  font-weight: 900;
+  box-shadow: 6px 6px 0 rgba(0, 111, 174, 0.08);
+  clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 11px, 100% 100%, 11px 100%, 0 calc(100% - 11px));
+}
+
+.timeline-tree-card {
+  --clip-card-corner: 16px;
+  border: 1px solid rgba(5, 7, 13, 0.1);
+  background: rgba(255, 255, 255, 0.94);
+  color: #05070d;
+  padding: 1rem;
+  box-shadow: 0 12px 30px rgba(5, 7, 13, 0.045);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--clip-card-corner)) 0,
+    100% var(--clip-card-corner),
+    100% 100%,
+    var(--clip-card-corner) 100%,
+    0 calc(100% - var(--clip-card-corner))
+  );
+}
+
+.timeline-tree-date {
+  color: #f47b20;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.timeline-tree-card h3 {
+  margin-top: 0.55rem;
+  color: #05070d;
+  font-size: clamp(1rem, 2vw, 1.35rem);
+  font-weight: 900;
+  line-height: 1.08;
+  text-transform: uppercase;
+}
+
+.timeline-tree-card p:not(.timeline-tree-date) {
+  margin-top: 0.65rem;
+  color: rgba(5, 7, 13, 0.62);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+@keyframes heroAuroraDrift {
+  from {
+    transform: translate3d(-3%, -4%, 0) rotate(-4deg) scale(1);
+  }
+
+  to {
+    transform: translate3d(2%, 1%, 0) rotate(2deg) scale(1.08);
+  }
 }
 
 .hero-os-overview {
@@ -1130,10 +1280,16 @@ textarea:focus-visible {
 
 .light-page section,
 .light-page .tech-grid,
-.light-page [class*="bg-[#05070d"],
-.light-page [class*="bg-[#080d16"],
-.light-page [class*="bg-[#0b101b"] {
+.light-page [class*='bg-[#05070d]'],
+.light-page [class*='bg-[#080d16]'],
+.light-page [class*='bg-[#0b101b]'] {
   background-color: #fff !important;
+  color: #05070d !important;
+}
+
+.home-light-zone,
+.home-light-zone section {
+  background: #fff !important;
   color: #05070d !important;
 }
 
@@ -1797,6 +1953,10 @@ textarea:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   .reveal-up,
   .reveal-up-delay,
   .page-transition,
