@@ -1,5 +1,5 @@
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { CalendarDays, ChevronUp, Home, LayoutDashboard, Megaphone, ShieldCheck, UserPlus, X } from "lucide-react";
+import { CalendarDays, ChevronUp, Home, LayoutDashboard, Megaphone, UserPlus, X } from "lucide-react";
 import clsx from "clsx";
 import { useEffect, useLayoutEffect, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { ToastViewport } from "./ToastViewport";
@@ -9,7 +9,6 @@ import type { Event } from "../lib/types";
 // menu navigasi utama — pake lucide-react icon biar gak butuh gambar
 const navItems = [
   { to: "/", label: "Beranda", icon: Home },
-  { to: "/admin", label: "Admin", icon: ShieldCheck },
   { to: "/daftar", label: "Pendaftaran", icon: UserPlus },
   { to: "/pengumuman", label: "Pengumuman", icon: Megaphone },
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }

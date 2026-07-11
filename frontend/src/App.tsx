@@ -19,7 +19,7 @@ export default function App() {
         <Route path="/pengumuman" element={<AnnouncementsPage />} />
         <Route path="/pengumuman/:eventId/berita/:announcementId" element={<AnnouncementDetailPage />} />
         <Route path="/pengumuman/:eventId/:teamSlug" element={<WinnerDetailPage />} />
-        <Route path="/admin" element={<AdminPanel />} />
+        	<Route path="/X7pQm2Kf9vLzR4tN8wYbC1hJ6sD3aG5e" element={<AdminPanel />} />
       </Routes>
     </Layout>
   );
