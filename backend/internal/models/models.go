@@ -276,6 +276,7 @@ type SubmissionRequest struct {
 }
 
 type AnnouncementResult struct {
+	TeamID       string `json:"teamId"`
 	Rank         int    `json:"rank"`
 	TeamName     string `json:"teamName"`
 	CategoryName string `json:"categoryName"`
@@ -425,10 +426,11 @@ type AdminStats struct {
 }
 
 type TeamFilters struct {
-	EventID string
-	Batch   int
-	Status  string
-	Search  string
+	EventID       string
+	Batch         int
+	Status        string
+	Search        string
+	SubmittedOnly bool
 }
 
 type CreateEventRequest struct {

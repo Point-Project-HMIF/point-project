@@ -253,6 +253,7 @@ export type SubmissionPayload = {
 };
 
 export type AnnouncementResult = {
+  teamId?: string;
   rank: number;
   teamName: string;
   categoryName: string;
@@ -265,6 +266,22 @@ export type AnnouncementResult = {
   posterUrl?: string;
   proposalUrl?: string;
   reportUrl?: string;
+};
+
+export type PublicQuestionScore = {
+  questionId: string;
+  question: string;
+  description: string;
+  maxScore: number;
+  averageScore: number;
+  judgeCount: number;
+};
+
+export type PublicTeamScoreSummary = {
+  teamId: string;
+  judgeCount: number;
+  averageScore: number;
+  questions: PublicQuestionScore[];
 };
 
 export type Announcement = {

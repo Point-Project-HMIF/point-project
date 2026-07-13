@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -436,6 +437,7 @@ func NewRouter(
 		r.Get("/events/{eventID}/rubric", server.listRubricQuestions)
 		r.Get("/events/{eventID}/announcements", server.listAnnouncements)
 		r.Get("/events/{eventID}/teams", server.listPublicTeams)
+		r.Get("/events/{eventID}/teams/{teamID}/score-summary", server.publicTeamScoreSummary)
 		r.Get("/files/r2/*", server.downloadR2File)
 		r.Post("/registrations/payment", server.createRegistrationPayment)
 		r.Post("/registrations/payment/check", server.checkRegistrationPayment)
@@ -640,6 +642,80 @@ func (s *Server) listPublicTeams(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeData(w, http.StatusOK, publicTeams)
+}
+
+type publicQuestionScore struct {
+	QuestionID   string  `json:"questionId"`
+	Question     string  `json:"question"`
+	Description  string  `json:"description"`
+	MaxScore     int     `json:"maxScore"`
+	AverageScore float64 `json:"averageScore"`
+	JudgeCount   int     `json:"judgeCount"`
+}
+
+type publicTeamScoreSummary struct {
+	TeamID       string                `json:"teamId"`
+	JudgeCount   int                   `json:"judgeCount"`
+	AverageScore float64               `json:"averageScore"`
+	Questions    []publicQuestionScore `json:"questions"`
+}
+
+func (s *Server) publicTeamScoreSummary(w http.ResponseWriter, r *http.Request) {
+	eventID := chi.URLParam(r, "eventID")
+	teamID := chi.URLParam(r, "teamID")
+	detail, err := s.store.GetTeamDetail(r.Context(), teamID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	if detail.Event.ID != eventID {
+		writeError(w, http.StatusNotFound, errors.New("tim tidak ditemukan pada event ini"))
+		return
+	}
+
+	judgeCount := len(detail.Assessments)
+	totalScore := 0
+	for _, assessment := range detail.Assessments {
+		totalScore += assessment.TotalScore
+	}
+	summary := publicTeamScoreSummary{
+		TeamID:       detail.Team.ID,
+		JudgeCount:   judgeCount,
+		AverageScore: averageInt(totalScore, judgeCount),
+		Questions:    make([]publicQuestionScore, 0, len(detail.RubricQuestions)),
+	}
+	for _, question := range detail.RubricQuestions {
+		scoreTotal := 0
+		scoreCount := 0
+		for _, assessment := range detail.Assessments {
+			for _, score := range assessment.Scores {
+				if score.Question.ID == question.ID {
+					scoreTotal += score.Score
+					scoreCount++
+					break
+				}
+			}
+		}
+		if scoreCount == 0 {
+			continue
+		}
+		summary.Questions = append(summary.Questions, publicQuestionScore{
+			QuestionID:   question.ID,
+			Question:     question.Question,
+			Description:  question.Description,
+			MaxScore:     question.MaxScore,
+			AverageScore: averageInt(scoreTotal, scoreCount),
+			JudgeCount:   scoreCount,
+		})
+	}
+	writeData(w, http.StatusOK, summary)
+}
+
+func averageInt(total int, count int) float64 {
+	if count <= 0 {
+		return 0
+	}
+	return float64(total) / float64(count)
 }
 
 func (s *Server) requestRegistrationOTP(w http.ResponseWriter, r *http.Request) {
@@ -1379,10 +1455,11 @@ func safeExcelSheetName(name string) string {
 func (s *Server) listTeams(w http.ResponseWriter, r *http.Request) {
 	batch, _ := strconv.Atoi(r.URL.Query().Get("batch"))
 	teams, err := s.store.ListTeams(r.Context(), models.TeamFilters{
-		EventID: r.URL.Query().Get("eventId"),
-		Batch:   batch,
-		Status:  r.URL.Query().Get("status"),
-		Search:  r.URL.Query().Get("search"),
+		EventID:       r.URL.Query().Get("eventId"),
+		Batch:         batch,
+		Status:        r.URL.Query().Get("status"),
+		Search:        r.URL.Query().Get("search"),
+		SubmittedOnly: r.URL.Query().Get("submittedOnly") == "true",
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)

@@ -992,6 +992,7 @@ func (s *PostgresStore) enrichAnnouncementResults(ctx context.Context, eventID s
 			if assets == nil {
 				continue
 			}
+			fillFirstNonEmpty(&result.TeamID, assets.team.ID)
 			fillFirstNonEmpty(&result.CategoryName, assets.team.CategoryName)
 			fillFirstNonEmpty(&result.Institution, assets.team.Institution)
 			fillFirstNonEmpty(&result.PrototypeURL, assets.prototype)
@@ -2463,6 +2464,22 @@ func (s *PostgresStore) ListTeams(ctx context.Context, filters models.TeamFilter
 	if filters.Search != "" {
 		args = append(args, "%"+strings.ToLower(filters.Search)+"%")
 		query += fmt.Sprintf(" and lower(t.name || ' ' || t.leader_name || ' ' || t.institution || ' ' || t.leader_email) like $%d", len(args))
+	}
+	if filters.SubmittedOnly {
+		query += `
+			and exists (
+				select 1
+				from submissions s
+				where s.team_id = t.id
+				  and (
+					coalesce(s.prototype_url, '') <> ''
+					or coalesce(s.proposal_url, '') <> ''
+					or coalesce(s.ppt_url, '') <> ''
+					or coalesce(s.poster_url, '') <> ''
+					or coalesce(s.report_url, '') <> ''
+				  )
+			)
+		`
 	}
 	query += " order by t.created_at desc"
 

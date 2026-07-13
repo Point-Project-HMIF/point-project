@@ -283,6 +283,7 @@ export function AdminPanel() {
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [redeemCodes, setRedeemCodes] = useState<AdminRedeemCode[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<TeamDetail | null>(null);
+  const [submissionTeams, setSubmissionTeams] = useState<Team[]>([]);
   const [scoreRanking, setScoreRanking] = useState<ScoreRankingRow[]>([]);
   const [rankingLoading, setRankingLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -348,7 +349,7 @@ export function AdminPanel() {
   const visibleTabs = useMemo(
     () =>
       isJury
-        ? tabs.filter((item) => item.id === "peserta")
+        ? tabs.filter((item) => item.id === "submission")
         : tabs.filter(
             (item) =>
               (!item.superOnly || isSuperAdmin) &&
@@ -369,6 +370,19 @@ export function AdminPanel() {
       return matchesSearch && matchesStatus;
     });
   }, [teams, search, status]);
+
+  const filteredSubmissionTeams = useMemo(() => {
+    const q = search.toLowerCase();
+    return submissionTeams.filter((team) => {
+      const matchesSearch =
+        !q ||
+        `${team.name} ${team.leaderName} ${team.institution} ${team.leaderEmail}`
+          .toLowerCase()
+          .includes(q);
+      const matchesStatus = !status || team.verificationStatus === status;
+      return matchesSearch && matchesStatus;
+    });
+  }, [submissionTeams, search, status]);
 
   const announcementTeams = useMemo(() => {
     const q = announcementTeamSearch.toLowerCase().trim();
@@ -424,6 +438,7 @@ export function AdminPanel() {
       const [
         nextStats,
         nextTeams,
+        nextSubmissionTeams,
         nextUsers,
         active,
         nextEvents,
@@ -431,6 +446,7 @@ export function AdminPanel() {
       ] = await Promise.all([
         api.adminStats(nextToken),
         api.adminTeams(nextToken),
+        api.adminTeams(nextToken, "", "", true),
         juryMode ? Promise.resolve([]) : api.adminUsers(nextToken),
         api.activeEvent(),
         api.events(),
@@ -486,6 +502,7 @@ export function AdminPanel() {
       ]);
       setStats(nextStats);
       setTeams(nextTeams ?? []);
+      setSubmissionTeams(nextSubmissionTeams ?? []);
       setAdminUsers(nextUsers ?? []);
       setRedeemCodes(nextRedeemCodes ?? []);
       setEvent(active);
@@ -648,8 +665,8 @@ export function AdminPanel() {
   }, [token, isSuperAdmin, documentEventId]);
 
   useEffect(() => {
-    if (isJury && tab !== "peserta") {
-      setTab("peserta");
+    if (isJury && tab !== "submission") {
+      setTab("submission");
       return;
     }
     if (
@@ -683,7 +700,7 @@ export function AdminPanel() {
         JSON.stringify(response.user),
       );
       window.dispatchEvent(new CustomEvent("pointproject:admin-session"));
-      setTab(response.user.role === "juri" ? "peserta" : "overview");
+      setTab(response.user.role === "juri" ? "submission" : "overview");
       await loadAdminData(response.token, response.user);
       showMessage(`Berhasil masuk sebagai ${response.user.name}.`);
     } catch (err) {
@@ -781,6 +798,9 @@ export function AdminPanel() {
       setTeams((current) =>
         current.map((team) => (team.id === teamId ? nextTeam : team)),
       );
+      setSubmissionTeams((current) =>
+        current.map((team) => (team.id === teamId ? nextTeam : team)),
+      );
       if (selectedTeam?.team.id === teamId) {
         setSelectedTeam({ ...selectedTeam, team: nextTeam });
       }
@@ -811,6 +831,9 @@ export function AdminPanel() {
       await api.deleteTeam(token, teamId);
       setSelectedTeam(null);
       setTeams((current) => current.filter((team) => team.id !== teamId));
+      setSubmissionTeams((current) =>
+        current.filter((team) => team.id !== teamId),
+      );
       await loadAdminData(token);
       showMessage(`Tim ${teamName} berhasil dihapus.`);
     } catch (err) {
@@ -3282,15 +3305,51 @@ export function AdminPanel() {
                   )}
                 >
                   <div className="min-w-0">
-                    <h2 className="text-xl font-black">Rekap Submission</h2>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-primary">
+                        Submission
+                      </p>
+                      <h2 className="mt-2 text-xl font-black">
+                        Tim yang sudah mengirim karya
+                      </h2>
+                      <p className="mt-2 text-sm leading-6 text-dark/60">
+                        Tabel ini hanya menampilkan tim yang sudah mengirim
+                        minimal satu file atau link submission.
+                      </p>
+                    </div>
+                    <div className="mt-5 grid gap-3 md:grid-cols-[1fr_220px]">
+                      <div className="relative">
+                        <Search
+                          className="pointer-events-none absolute left-3 top-3 text-dark/35"
+                          size={18}
+                        />
+                        <input
+                          className="field !pl-10"
+                          value={search}
+                          onChange={(event) => setSearch(event.target.value)}
+                          placeholder="Cari tim yang sudah submit"
+                        />
+                      </div>
+                      <CustomSelect
+                        value={status}
+                        onChange={setStatus}
+                        options={[
+                          { value: "", label: "Semua status" },
+                          { value: "pending", label: "Pending" },
+                          { value: "verified", label: "Verified" },
+                          { value: "rejected", label: "Rejected" },
+                        ]}
+                      />
+                    </div>
                     <TeamTable
-                      teams={teams}
+                      teams={filteredSubmissionTeams}
                       onVerify={verify}
                       onDetail={openTeamDetail}
                       loading={loading}
                       selectedTeamId={selectedTeam?.team.id}
-                      canVerify={!isJury}
+                      canVerify={false}
                       compact
+                      emptyLabel="Belum ada tim yang sudah mengirim file atau link submission sesuai filter."
                     />
                   </div>
                   {selectedTeam ? (
@@ -4312,20 +4371,7 @@ function JuryAssessmentForm({
                 {question.description}
               </span>
             ) : null}
-            <div className="mt-3 flex items-center gap-3">
-              <input
-                type="range"
-                min={0}
-                max={question.maxScore}
-                value={Number(scores[question.id]) || 0}
-                onChange={(event) =>
-                  setScores((current) => ({
-                    ...current,
-                    [question.id]: event.target.value,
-                  }))
-                }
-                className="min-w-0 flex-1 accent-primary"
-              />
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
               <input
                 type="number"
                 min={0}
@@ -4337,7 +4383,7 @@ function JuryAssessmentForm({
                     [question.id]: event.target.value,
                   }))
                 }
-                className="field w-24 px-3 py-2 text-center font-black"
+                className="field w-full px-3 py-2 text-center font-black sm:w-28"
               />
               <span className="text-xs font-bold text-dark/45">
                 / {question.maxScore}
@@ -4374,14 +4420,77 @@ function JuryAssessmentForm({
 }
 
 function AssessmentSummary({ detail }: { detail: TeamDetail }) {
+  const judgeCount = detail.assessments.length;
   const maxTotal = detail.rubricQuestions.reduce(
     (total, question) => total + question.maxScore,
     0,
   );
+  const averageTotal = judgeCount
+    ? detail.assessments.reduce(
+        (total, assessment) => total + assessment.totalScore,
+        0,
+      ) / judgeCount
+    : 0;
+  const questionAverages = detail.rubricQuestions
+    .map((question) => {
+      const scores = detail.assessments
+        .map(
+          (assessment) =>
+            assessment.scores.find((score) => score.question.id === question.id)
+              ?.score,
+        )
+        .filter((score): score is number => typeof score === "number");
+      const average = scores.length
+        ? scores.reduce((total, score) => total + score, 0) / scores.length
+        : 0;
+      return { question, average, judgeCount: scores.length };
+    })
+    .filter((item) => item.judgeCount > 0);
+
   return (
     <section className="mt-6">
-      <p className="text-sm font-black">Rubrik Penilaian</p>
+      <p className="text-sm font-black">Nilai Juri</p>
       <div className="mt-3 grid gap-3">
+        {judgeCount ? (
+          <article className="rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="font-black">Rata-rata akhir</p>
+                <p className="mt-1 text-xs leading-5 text-dark/55">
+                  Dihitung dari total nilai semua juri lalu dibagi jumlah juri
+                  yang sudah menilai.
+                </p>
+              </div>
+              <div className="text-left sm:text-right">
+                <ScoreBadge value={averageTotal} maxScore={maxTotal} large />
+                <p className="mt-1 text-xs font-bold text-dark/45">
+                  {judgeCount} juri
+                </p>
+              </div>
+            </div>
+            {questionAverages.length ? (
+              <div className="mt-3 grid gap-2">
+                <p className="text-xs font-black uppercase tracking-wide text-dark/45">
+                  Rata-rata per pertanyaan
+                </p>
+                {questionAverages.map((item) => (
+                  <div
+                    key={item.question.id}
+                    className="flex items-start justify-between gap-3 rounded-md bg-white px-3 py-2"
+                  >
+                    <span className="min-w-0 break-words text-dark/70">
+                      {item.question.question}
+                    </span>
+                    <ScoreBadge
+                      value={item.average}
+                      maxScore={item.question.maxScore}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </article>
+        ) : null}
         {detail.assessments.map((assessment) => (
           <article
             key={assessment.id}
@@ -4394,10 +4503,7 @@ function AssessmentSummary({ detail }: { detail: TeamDetail }) {
                   {formatDateTime(assessment.updatedAt)}
                 </p>
               </div>
-              <StatusPill tone="teal">
-                {assessment.totalScore}
-                {maxTotal ? `/${maxTotal}` : ""}
-              </StatusPill>
+              <ScoreBadge value={assessment.totalScore} maxScore={maxTotal} />
             </div>
             <div className="mt-3 grid gap-2">
               {assessment.scores.map((score) => (
@@ -4408,9 +4514,10 @@ function AssessmentSummary({ detail }: { detail: TeamDetail }) {
                   <span className="min-w-0 break-words text-dark/70">
                     {score.question.question}
                   </span>
-                  <span className="shrink-0 font-black">
-                    {score.score}/{score.question.maxScore}
-                  </span>
+                  <ScoreBadge
+                    value={score.score}
+                    maxScore={score.question.maxScore}
+                  />
                 </div>
               ))}
             </div>
@@ -4428,6 +4535,39 @@ function AssessmentSummary({ detail }: { detail: TeamDetail }) {
         ) : null}
       </div>
     </section>
+  );
+}
+
+function ScoreBadge({
+  value,
+  maxScore,
+  large = false,
+}: {
+  value: number;
+  maxScore: number;
+  large?: boolean;
+}) {
+  const percent = maxScore > 0 ? (value / maxScore) * 100 : value;
+  const tone =
+    percent >= 75
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : percent >= 65
+        ? "border-orange-200 bg-orange-50 text-orange-700"
+        : percent >= 45
+          ? "border-yellow-200 bg-yellow-50 text-yellow-800"
+          : "border-red-200 bg-red-50 text-red-700";
+
+  return (
+    <span
+      className={clsx(
+        "shrink-0 rounded-md border text-center font-black",
+        tone,
+        large ? "min-w-24 px-4 py-2 text-2xl" : "min-w-16 px-3 py-1 text-sm",
+      )}
+      title={`${formatScore(percent)}% dari skor maksimal`}
+    >
+      {formatScore(value)}
+    </span>
   );
 }
 
@@ -4458,6 +4598,7 @@ function TeamTable({
   selectedTeamId,
   canVerify = true,
   compact = false,
+  emptyLabel = "Belum ada peserta sesuai filter.",
 }: {
   teams: Team[];
   onVerify: (teamId: string, status: string) => void;
@@ -4466,6 +4607,7 @@ function TeamTable({
   selectedTeamId?: string;
   canVerify?: boolean;
   compact?: boolean;
+  emptyLabel?: string;
 }) {
   function openFromKeyboard(
     event: KeyboardEvent<HTMLElement>,
@@ -4578,7 +4720,7 @@ function TeamTable({
         ))}
         {!teams.length ? (
           <p className="p-6 text-center text-sm text-dark/60">
-            Belum ada peserta sesuai filter.
+            {emptyLabel}
           </p>
         ) : null}
       </div>
@@ -4673,7 +4815,7 @@ function TeamTable({
                   className="py-8 text-center text-dark/60"
                   colSpan={compact || !canVerify ? 5 : 6}
                 >
-                  Belum ada peserta sesuai filter.
+                  {emptyLabel}
                 </td>
               </tr>
             ) : null}

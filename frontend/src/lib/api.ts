@@ -23,6 +23,7 @@ import type {
   JudgeAssessmentPayload,
   LoginResponse,
   ParticipantDashboard,
+  PublicTeamScoreSummary,
   PublicTeam,
   RegistrationPayment,
   RegistrationPaymentCheckPayload,
@@ -169,6 +170,10 @@ export const api = {
     ),
   eventTeams: (eventId: string) =>
     request<PublicTeam[]>(`/events/${eventId}/teams`),
+  publicTeamScoreSummary: (eventId: string, teamId: string) =>
+    request<PublicTeamScoreSummary>(
+      `/events/${eventId}/teams/${teamId}/score-summary`,
+    ),
   requestRegistrationOTP: (payload: RegistrationOTPPayload) =>
     request<RegistrationOTPResponse>("/registrations/otp", {
       method: "POST",
@@ -214,10 +219,16 @@ export const api = {
   adminStats: (token: string) => request<AdminStats>("/admin/stats", {}, token),
   exportAdminSpreadsheet: (token: string) =>
     downloadRequest("/admin/export.xlsx", token),
-  adminTeams: (token: string, search = "", status = "") => {
+  adminTeams: (
+    token: string,
+    search = "",
+    status = "",
+    submittedOnly = false,
+  ) => {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (status) params.set("status", status);
+    if (submittedOnly) params.set("submittedOnly", "true");
     const qs = params.toString();
     return request<Team[]>(`/admin/teams${qs ? `?${qs}` : ""}`, {}, token);
   },

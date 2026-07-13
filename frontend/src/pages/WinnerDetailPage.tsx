@@ -17,6 +17,7 @@ import type {
   Announcement,
   AnnouncementResult,
   Event,
+  PublicTeamScoreSummary,
   RubricQuestion,
 } from "../lib/types";
 
@@ -29,6 +30,8 @@ export function WinnerDetailPage() {
   const [event, setEvent] = useState<Event | null>(null);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [rubricQuestions, setRubricQuestions] = useState<RubricQuestion[]>([]);
+  const [scoreSummary, setScoreSummary] =
+    useState<PublicTeamScoreSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -71,6 +74,32 @@ export function WinnerDetailPage() {
   const embeddedPreviewUrl = previewUrl
     ? toEmbeddablePreviewURL(previewUrl)
     : "";
+  const scoreByQuestion = useMemo(
+    () =>
+      new Map(
+        (scoreSummary?.questions ?? []).map((item) => [item.questionId, item]),
+      ),
+    [scoreSummary],
+  );
+
+  useEffect(() => {
+    if (!eventId || !winner?.teamId) {
+      setScoreSummary(null);
+      return;
+    }
+    let alive = true;
+    api
+      .publicTeamScoreSummary(eventId, winner.teamId)
+      .then((summary) => {
+        if (alive) setScoreSummary(summary);
+      })
+      .catch(() => {
+        if (alive) setScoreSummary(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [eventId, winner?.teamId]);
 
   return (
     <section className="experience-page py-14 scroll-pop" data-scroll-pop>
@@ -162,12 +191,18 @@ export function WinnerDetailPage() {
                       className="rounded-md border border-dark/10 bg-light p-3"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <p className="text-sm font-black">
+                        <p className="min-w-0 text-sm font-black">
                           {question.question}
                         </p>
-                        <span className="shrink-0 text-xs font-black text-primary">
-                          /{question.maxScore}
-                        </span>
+                        {scoreByQuestion.has(question.id) ? (
+                          <ScoreBadge
+                            value={
+                              scoreByQuestion.get(question.id)?.averageScore ??
+                              0
+                            }
+                            maxScore={question.maxScore}
+                          />
+                        ) : null}
                       </div>
                       <p className="mt-1 text-sm leading-6 text-dark/62">
                         {question.description ||
@@ -261,6 +296,34 @@ function toEmbeddablePreviewURL(url: string) {
     return `https://www.figma.com/embed?embed_host=share&url=${encodeURIComponent(resolved)}`;
   }
   return resolved;
+}
+
+function ScoreBadge({ value, maxScore }: { value: number; maxScore: number }) {
+  const percent = maxScore > 0 ? (value / maxScore) * 100 : value;
+  const tone =
+    percent >= 75
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : percent >= 65
+        ? "border-orange-200 bg-orange-50 text-orange-700"
+        : percent >= 45
+          ? "border-yellow-200 bg-yellow-50 text-yellow-800"
+          : "border-red-200 bg-red-50 text-red-700";
+
+  return (
+    <span
+      className={`shrink-0 rounded-md border px-3 py-1 text-sm font-black ${tone}`}
+      title={`${formatScore(percent)}% dari skor maksimal`}
+    >
+      {formatScore(value)}
+    </span>
+  );
+}
+
+function formatScore(value: number) {
+  if (!Number.isFinite(value)) return "-";
+  return new Intl.NumberFormat("id-ID", {
+    maximumFractionDigits: 1,
+  }).format(value);
 }
 
 function AssetCard({
