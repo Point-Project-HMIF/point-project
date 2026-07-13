@@ -13,6 +13,31 @@ type Event struct {
 	LockedAt  string `json:"lockedAt"`
 }
 
+type EventDocument struct {
+	ID          string `json:"id"`
+	EventID     string `json:"eventId"`
+	Label       string `json:"label"`
+	URL         string `json:"url"`
+	Type        string `json:"type"`
+	RequiredFor string `json:"requiredFor"`
+	SortOrder   int    `json:"sortOrder"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
+}
+
+type EventDocumentInput struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	URL         string `json:"url"`
+	Type        string `json:"type"`
+	RequiredFor string `json:"requiredFor"`
+	SortOrder   int    `json:"sortOrder"`
+}
+
+type ReplaceEventDocumentsRequest struct {
+	Items []EventDocumentInput `json:"items"`
+}
+
 type Category struct {
 	ID           string   `json:"id"`
 	EventID      string   `json:"eventId"`
@@ -79,6 +104,16 @@ type EventRules struct {
 type EventRulesRequest struct {
 	MinTeamMembers int `json:"minTeamMembers"`
 	MaxTeamMembers int `json:"maxTeamMembers"`
+}
+
+type EventRegistrationSettings struct {
+	EventID      string `json:"eventId"`
+	CurrentBatch int    `json:"currentBatch"`
+	UpdatedAt    string `json:"updatedAt"`
+}
+
+type EventRegistrationSettingsRequest struct {
+	CurrentBatch int `json:"currentBatch"`
 }
 
 type EventPaymentSettings struct {
@@ -297,12 +332,63 @@ type Dashboard struct {
 	SubmissionStages []TeamSubmissionStage `json:"submissionStages"`
 }
 
+type RubricQuestion struct {
+	ID          string `json:"id"`
+	EventID     string `json:"eventId"`
+	Question    string `json:"question"`
+	Description string `json:"description"`
+	MaxScore    int    `json:"maxScore"`
+	SortOrder   int    `json:"sortOrder"`
+	IsActive    bool   `json:"isActive"`
+}
+
+type RubricQuestionInput struct {
+	ID          string `json:"id"`
+	Question    string `json:"question"`
+	Description string `json:"description"`
+	MaxScore    int    `json:"maxScore"`
+	SortOrder   int    `json:"sortOrder"`
+	IsActive    bool   `json:"isActive"`
+}
+
+type ReplaceRubricQuestionsRequest struct {
+	Items []RubricQuestionInput `json:"items"`
+}
+
+type JudgeScoreInput struct {
+	QuestionID string `json:"questionId"`
+	Score      int    `json:"score"`
+}
+
+type JudgeAssessmentRequest struct {
+	Notes  string            `json:"notes"`
+	Scores []JudgeScoreInput `json:"scores"`
+}
+
+type JudgeAssessmentScore struct {
+	Question RubricQuestion `json:"question"`
+	Score    int            `json:"score"`
+}
+
+type JudgeAssessment struct {
+	ID         string                 `json:"id"`
+	TeamID     string                 `json:"teamId"`
+	JudgeID    string                 `json:"judgeId"`
+	JudgeName  string                 `json:"judgeName"`
+	Notes      string                 `json:"notes"`
+	TotalScore int                    `json:"totalScore"`
+	Scores     []JudgeAssessmentScore `json:"scores"`
+	UpdatedAt  string                 `json:"updatedAt"`
+}
+
 type TeamDetail struct {
 	Event            Event                 `json:"event"`
 	Category         Category              `json:"category"`
 	Team             Team                  `json:"team"`
 	Submissions      []Submission          `json:"submissions"`
 	SubmissionStages []TeamSubmissionStage `json:"submissionStages"`
+	RubricQuestions  []RubricQuestion      `json:"rubricQuestions"`
+	Assessments      []JudgeAssessment     `json:"assessments"`
 }
 
 type AdminUser struct {
@@ -346,12 +432,13 @@ type TeamFilters struct {
 }
 
 type CreateEventRequest struct {
-	Name      string `json:"name"`
-	Theme     string `json:"theme"`
-	Year      int    `json:"year"`
-	StartDate string `json:"startDate"`
-	EndDate   string `json:"endDate"`
-	Status    string `json:"status"`
+	Name      string               `json:"name"`
+	Theme     string               `json:"theme"`
+	Year      int                  `json:"year"`
+	StartDate string               `json:"startDate"`
+	EndDate   string               `json:"endDate"`
+	Status    string               `json:"status"`
+	Documents []EventDocumentInput `json:"documents"`
 }
 
 type CreateAnnouncementRequest struct {

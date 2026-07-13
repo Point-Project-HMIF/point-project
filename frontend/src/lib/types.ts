@@ -9,6 +9,27 @@ export type Event = {
   lockedAt: string;
 };
 
+export type EventDocument = {
+  id: string;
+  eventId: string;
+  label: string;
+  url: string;
+  type: "link" | "file" | string;
+  requiredFor: "create" | "lock" | "archive" | string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EventDocumentInput = {
+  id?: string;
+  label: string;
+  url: string;
+  type: "link" | "file" | string;
+  requiredFor: "create" | "lock" | "archive" | string;
+  sortOrder: number;
+};
+
 export type Category = {
   id: string;
   eventId: string;
@@ -71,6 +92,16 @@ export type EventRules = {
 export type EventRulesPayload = {
   minTeamMembers: number;
   maxTeamMembers: number;
+};
+
+export type EventRegistrationSettings = {
+  eventId: string;
+  currentBatch: number;
+  updatedAt: string;
+};
+
+export type EventRegistrationSettingsPayload = {
+  currentBatch: number;
 };
 
 export type EventPaymentSettings = {
@@ -261,12 +292,54 @@ export type ParticipantDashboard = {
   submissionStages: TeamSubmissionStage[];
 };
 
+export type RubricQuestion = {
+  id: string;
+  eventId: string;
+  question: string;
+  description: string;
+  maxScore: number;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+export type RubricQuestionInput = {
+  id?: string;
+  question: string;
+  description: string;
+  maxScore: number;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+export type JudgeAssessmentScore = {
+  question: RubricQuestion;
+  score: number;
+};
+
+export type JudgeAssessment = {
+  id: string;
+  teamId: string;
+  judgeId: string;
+  judgeName: string;
+  notes: string;
+  totalScore: number;
+  scores: JudgeAssessmentScore[];
+  updatedAt: string;
+};
+
+export type JudgeAssessmentPayload = {
+  notes: string;
+  scores: Array<{ questionId: string; score: number }>;
+};
+
 export type TeamDetail = {
   event: Event;
   category: Category;
   team: Team;
   submissions: Submission[];
   submissionStages: TeamSubmissionStage[];
+  rubricQuestions: RubricQuestion[];
+  assessments: JudgeAssessment[];
 };
 
 export type AdminUser = {

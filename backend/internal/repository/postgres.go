@@ -254,6 +254,78 @@ func (s *PostgresStore) ListCommittee(ctx context.Context, eventID string) ([]mo
 	return members, rows.Err()
 }
 
+func (s *PostgresStore) ListEventDocuments(ctx context.Context, eventID string) ([]models.EventDocument, error) {
+	rows, err := s.db.Query(ctx, `
+		select id::text, event_id::text, label, url, type, required_for, sort_order,
+		       to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
+		       to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+		from event_documents
+		where event_id = $1
+		order by sort_order, label
+	`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	documents := make([]models.EventDocument, 0)
+	for rows.Next() {
+		document, err := scanEventDocument(rows)
+		if err != nil {
+			return nil, err
+		}
+		documents = append(documents, document)
+	}
+	return documents, rows.Err()
+}
+
+func (s *PostgresStore) ReplaceEventDocuments(ctx context.Context, eventID string, items []models.EventDocumentInput) ([]models.EventDocument, error) {
+	normalized, err := normalizeEventDocumentInputs(items)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `delete from event_documents where event_id = $1`, eventID); err != nil {
+		return nil, err
+	}
+	for _, item := range normalized {
+		if _, err := tx.Exec(ctx, `
+			insert into event_documents (event_id, label, url, type, required_for, sort_order)
+			values ($1, $2, $3, $4, $5, $6)
+		`, eventID, item.Label, item.URL, item.Type, item.RequiredFor, item.SortOrder); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return s.ListEventDocuments(ctx, eventID)
+}
+
+func scanEventDocument(row interface{ Scan(dest ...any) error }) (models.EventDocument, error) {
+	var document models.EventDocument
+	if err := row.Scan(
+		&document.ID,
+		&document.EventID,
+		&document.Label,
+		&document.URL,
+		&document.Type,
+		&document.RequiredFor,
+		&document.SortOrder,
+		&document.CreatedAt,
+		&document.UpdatedAt,
+	); err != nil {
+		return models.EventDocument{}, err
+	}
+	return document, nil
+}
+
 func (s *PostgresStore) GetEventRules(ctx context.Context, eventID string) (models.EventRules, error) {
 	var rules models.EventRules
 	err := s.db.QueryRow(ctx, `
@@ -301,6 +373,47 @@ func (s *PostgresStore) UpdateEventRules(ctx context.Context, eventID string, in
 		return models.EventRules{}, err
 	}
 	return rules, nil
+}
+
+func (s *PostgresStore) GetEventRegistrationSettings(ctx context.Context, eventID string) (models.EventRegistrationSettings, error) {
+	var settings models.EventRegistrationSettings
+	err := s.db.QueryRow(ctx, `
+		select event_id::text, current_batch, to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+		from event_registration_settings
+		where event_id = $1
+	`, eventID).Scan(&settings.EventID, &settings.CurrentBatch, &settings.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return s.UpdateEventRegistrationSettings(ctx, eventID, models.EventRegistrationSettingsRequest{CurrentBatch: 1})
+	}
+	if err != nil {
+		return models.EventRegistrationSettings{}, err
+	}
+	return settings, nil
+}
+
+func (s *PostgresStore) UpdateEventRegistrationSettings(ctx context.Context, eventID string, input models.EventRegistrationSettingsRequest) (models.EventRegistrationSettings, error) {
+	if input.CurrentBatch == 0 {
+		input.CurrentBatch = 1
+	}
+	if input.CurrentBatch < 1 || input.CurrentBatch > 2 {
+		return models.EventRegistrationSettings{}, errors.New("batch pendaftaran hanya boleh Batch 1 atau Batch 2")
+	}
+	var settings models.EventRegistrationSettings
+	if err := s.db.QueryRow(ctx, `
+		insert into event_registration_settings (event_id, current_batch, updated_at)
+		values ($1, $2, now())
+		on conflict (event_id) do update
+		set current_batch = excluded.current_batch,
+		    updated_at = now()
+		returning event_id::text, current_batch, to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+	`, eventID, input.CurrentBatch).Scan(
+		&settings.EventID,
+		&settings.CurrentBatch,
+		&settings.UpdatedAt,
+	); err != nil {
+		return models.EventRegistrationSettings{}, err
+	}
+	return settings, nil
 }
 
 func (s *PostgresStore) GetEventPaymentSettings(ctx context.Context, eventID string, fallbackAmount int) (models.EventPaymentSettings, error) {
@@ -435,6 +548,217 @@ func (s *PostgresStore) SetTeamStageAccess(ctx context.Context, teamID string, i
 		return models.TeamDetail{}, errors.New("tahap upload tidak ditemukan untuk event tim")
 	}
 	return s.GetTeamDetail(ctx, teamID)
+}
+
+func (s *PostgresStore) ListRubricQuestions(ctx context.Context, eventID string) ([]models.RubricQuestion, error) {
+	rows, err := s.db.Query(ctx, `
+		select id::text, event_id::text, question, coalesce(description, ''), max_score, sort_order, is_active
+		from rubric_questions
+		where event_id = $1 and is_active = true
+		order by sort_order, created_at
+	`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]models.RubricQuestion, 0)
+	for rows.Next() {
+		var item models.RubricQuestion
+		if err := rows.Scan(
+			&item.ID,
+			&item.EventID,
+			&item.Question,
+			&item.Description,
+			&item.MaxScore,
+			&item.SortOrder,
+			&item.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *PostgresStore) ReplaceRubricQuestions(ctx context.Context, eventID string, items []models.RubricQuestionInput) ([]models.RubricQuestion, error) {
+	if _, err := s.GetEvent(ctx, eventID); err != nil {
+		return nil, err
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `delete from judge_assessments where team_id in (select id from teams where event_id = $1)`, eventID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `delete from rubric_questions where event_id = $1`, eventID); err != nil {
+		return nil, err
+	}
+	for index, item := range items {
+		question := strings.TrimSpace(item.Question)
+		if question == "" {
+			continue
+		}
+		maxScore := item.MaxScore
+		if maxScore <= 0 || maxScore > 100 {
+			maxScore = 100
+		}
+		sortOrder := item.SortOrder
+		if sortOrder <= 0 {
+			sortOrder = index + 1
+		}
+		isActive := item.IsActive
+		if item.ID == "" && !item.IsActive {
+			isActive = true
+		}
+		if _, err := tx.Exec(ctx, `
+			insert into rubric_questions (event_id, question, description, max_score, sort_order, is_active)
+			values ($1, $2, $3, $4, $5, $6)
+		`, eventID, question, strings.TrimSpace(item.Description), maxScore, sortOrder, isActive); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return s.ListRubricQuestions(ctx, eventID)
+}
+
+func (s *PostgresStore) SaveJudgeAssessment(ctx context.Context, teamID, judgeID string, input models.JudgeAssessmentRequest) (models.TeamDetail, error) {
+	team, err := s.getTeam(ctx, teamID)
+	if err != nil {
+		return models.TeamDetail{}, err
+	}
+	questions, err := s.ListRubricQuestions(ctx, team.EventID)
+	if err != nil {
+		return models.TeamDetail{}, err
+	}
+	if len(questions) == 0 {
+		return models.TeamDetail{}, errors.New("rubrik penilaian belum dibuat oleh panitia")
+	}
+
+	scoreByQuestion := make(map[string]int, len(input.Scores))
+	for _, score := range input.Scores {
+		scoreByQuestion[score.QuestionID] = score.Score
+	}
+	totalScore := 0
+	for _, question := range questions {
+		score := scoreByQuestion[question.ID]
+		if score < 0 || score > question.MaxScore {
+			return models.TeamDetail{}, fmt.Errorf("nilai %s harus 0-%d", question.Question, question.MaxScore)
+		}
+		totalScore += score
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return models.TeamDetail{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var assessmentID string
+	if err := tx.QueryRow(ctx, `
+		insert into judge_assessments (team_id, judge_id, notes, total_score)
+		values ($1, $2, $3, $4)
+		on conflict (team_id, judge_id)
+		do update set notes = excluded.notes, total_score = excluded.total_score, updated_at = now()
+		returning id::text
+	`, teamID, judgeID, strings.TrimSpace(input.Notes), totalScore).Scan(&assessmentID); err != nil {
+		return models.TeamDetail{}, err
+	}
+
+	if _, err := tx.Exec(ctx, `delete from judge_assessment_scores where assessment_id = $1`, assessmentID); err != nil {
+		return models.TeamDetail{}, err
+	}
+	for _, question := range questions {
+		if _, err := tx.Exec(ctx, `
+			insert into judge_assessment_scores (assessment_id, question_id, score)
+			values ($1, $2, $3)
+		`, assessmentID, question.ID, scoreByQuestion[question.ID]); err != nil {
+			return models.TeamDetail{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return models.TeamDetail{}, err
+	}
+	return s.GetTeamDetail(ctx, teamID)
+}
+
+func (s *PostgresStore) listTeamAssessments(ctx context.Context, teamID string) ([]models.JudgeAssessment, error) {
+	rows, err := s.db.Query(ctx, `
+		select a.id::text, a.team_id::text, a.judge_id::text,
+		       coalesce(u.name, u.email, 'Juri'), coalesce(a.notes, ''), a.total_score, a.updated_at
+		from judge_assessments a
+		left join admin_users u on u.id = a.judge_id
+		where a.team_id = $1
+		order by a.updated_at desc
+	`, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	assessments := make([]models.JudgeAssessment, 0)
+	for rows.Next() {
+		var assessment models.JudgeAssessment
+		var updatedAt time.Time
+		if err := rows.Scan(
+			&assessment.ID,
+			&assessment.TeamID,
+			&assessment.JudgeID,
+			&assessment.JudgeName,
+			&assessment.Notes,
+			&assessment.TotalScore,
+			&updatedAt,
+		); err != nil {
+			return nil, err
+		}
+		assessment.UpdatedAt = updatedAt.Format(time.RFC3339)
+		scores, err := s.listAssessmentScores(ctx, assessment.ID)
+		if err != nil {
+			return nil, err
+		}
+		assessment.Scores = scores
+		assessments = append(assessments, assessment)
+	}
+	return assessments, rows.Err()
+}
+
+func (s *PostgresStore) listAssessmentScores(ctx context.Context, assessmentID string) ([]models.JudgeAssessmentScore, error) {
+	rows, err := s.db.Query(ctx, `
+		select rq.id::text, rq.event_id::text, rq.question, coalesce(rq.description, ''),
+		       rq.max_score, rq.sort_order, rq.is_active, jas.score
+		from judge_assessment_scores jas
+		join rubric_questions rq on rq.id = jas.question_id
+		where jas.assessment_id = $1
+		order by rq.sort_order, rq.created_at
+	`, assessmentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	scores := make([]models.JudgeAssessmentScore, 0)
+	for rows.Next() {
+		var item models.JudgeAssessmentScore
+		if err := rows.Scan(
+			&item.Question.ID,
+			&item.Question.EventID,
+			&item.Question.Question,
+			&item.Question.Description,
+			&item.Question.MaxScore,
+			&item.Question.SortOrder,
+			&item.Question.IsActive,
+			&item.Score,
+		); err != nil {
+			return nil, err
+		}
+		scores = append(scores, item)
+	}
+	return scores, rows.Err()
 }
 
 func scanSubmissionStage(row interface{ Scan(dest ...any) error }) (models.SubmissionStage, error) {
@@ -580,7 +904,116 @@ func (s *PostgresStore) ListAnnouncements(ctx context.Context, eventID, kind str
 		}
 		announcements = append(announcements, announcement)
 	}
-	return announcements, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return s.enrichAnnouncementResults(ctx, eventID, announcements)
+}
+
+type announcementTeamAssets struct {
+	team      models.Team
+	prototype string
+	ppt       string
+	poster    string
+	proposal  string
+	report    string
+	preview   string
+}
+
+func (s *PostgresStore) enrichAnnouncementResults(ctx context.Context, eventID string, announcements []models.Announcement) ([]models.Announcement, error) {
+	needsResults := false
+	for _, announcement := range announcements {
+		if len(announcement.Results) > 0 {
+			needsResults = true
+			break
+		}
+	}
+	if !needsResults {
+		return announcements, nil
+	}
+
+	teams, err := s.ListTeams(ctx, models.TeamFilters{EventID: eventID})
+	if err != nil {
+		return nil, err
+	}
+	assetsByID := make(map[string]*announcementTeamAssets, len(teams))
+	assetsByName := make(map[string]*announcementTeamAssets, len(teams))
+	for _, team := range teams {
+		team := team
+		assets := &announcementTeamAssets{team: team}
+		assetsByID[team.ID] = assets
+		assetsByName[normalizeAnnouncementTeamName(team.Name)] = assets
+	}
+	if len(assetsByID) == 0 {
+		return announcements, nil
+	}
+
+	rows, err := s.db.Query(ctx, `
+		select s.team_id::text,
+		       coalesce(s.prototype_url, ''),
+		       coalesce(s.ppt_url, ''),
+		       coalesce(s.poster_url, ''),
+		       coalesce(s.proposal_url, ''),
+		       coalesce(s.report_url, '')
+		from submissions s
+		join teams t on t.id = s.team_id
+		where t.event_id = $1
+		order by s.submitted_at desc
+	`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var teamID, prototype, ppt, poster, proposal, report string
+		if err := rows.Scan(&teamID, &prototype, &ppt, &poster, &proposal, &report); err != nil {
+			return nil, err
+		}
+		assets := assetsByID[teamID]
+		if assets == nil {
+			continue
+		}
+		fillFirstNonEmpty(&assets.prototype, prototype)
+		fillFirstNonEmpty(&assets.preview, prototype)
+		fillFirstNonEmpty(&assets.ppt, ppt)
+		fillFirstNonEmpty(&assets.poster, poster)
+		fillFirstNonEmpty(&assets.proposal, proposal)
+		fillFirstNonEmpty(&assets.report, report)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for announcementIndex := range announcements {
+		for resultIndex := range announcements[announcementIndex].Results {
+			result := &announcements[announcementIndex].Results[resultIndex]
+			assets := assetsByName[normalizeAnnouncementTeamName(result.TeamName)]
+			if assets == nil {
+				continue
+			}
+			fillFirstNonEmpty(&result.CategoryName, assets.team.CategoryName)
+			fillFirstNonEmpty(&result.Institution, assets.team.Institution)
+			fillFirstNonEmpty(&result.PrototypeURL, assets.prototype)
+			fillFirstNonEmpty(&result.PreviewURL, assets.preview)
+			fillFirstNonEmpty(&result.PPTURL, assets.ppt)
+			fillFirstNonEmpty(&result.PosterURL, assets.poster)
+			fillFirstNonEmpty(&result.ProposalURL, assets.proposal)
+			fillFirstNonEmpty(&result.ReportURL, assets.report)
+		}
+	}
+	return announcements, nil
+}
+
+func normalizeAnnouncementTeamName(value string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
+}
+
+func fillFirstNonEmpty(target *string, value string) {
+	value = strings.TrimSpace(value)
+	if strings.TrimSpace(*target) == "" && value != "" {
+		*target = value
+	}
 }
 
 func scanAnnouncement(row interface{ Scan(dest ...any) error }) (models.Announcement, error) {
@@ -917,9 +1350,11 @@ func (s *PostgresStore) CreateTeam(ctx context.Context, input models.Registratio
 	if err != nil {
 		return models.Team{}, err
 	}
-	if input.Batch == 0 {
-		input.Batch = 1
+	registrationSettings, err := s.GetEventRegistrationSettings(ctx, eventID)
+	if err != nil {
+		return models.Team{}, err
 	}
+	input.Batch = registrationSettings.CurrentBatch
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -1052,12 +1487,22 @@ func (s *PostgresStore) GetTeamDetail(ctx context.Context, teamID string) (model
 	if err != nil {
 		return models.TeamDetail{}, err
 	}
+	rubricQuestions, err := s.ListRubricQuestions(ctx, team.EventID)
+	if err != nil {
+		return models.TeamDetail{}, err
+	}
+	assessments, err := s.listTeamAssessments(ctx, team.ID)
+	if err != nil {
+		return models.TeamDetail{}, err
+	}
 	return models.TeamDetail{
 		Event:            event,
 		Category:         category,
 		Team:             team,
 		Submissions:      submissions,
 		SubmissionStages: stages,
+		RubricQuestions:  rubricQuestions,
+		Assessments:      assessments,
 	}, nil
 }
 
@@ -2068,6 +2513,13 @@ func (s *PostgresStore) CreateEvent(ctx context.Context, input models.CreateEven
 	if input.Status != "draft" && input.Status != "arsip" {
 		return models.Event{}, errors.New("status event tidak valid")
 	}
+	documents, err := normalizeEventDocumentInputs(input.Documents)
+	if err != nil {
+		return models.Event{}, err
+	}
+	if err := requireCreateEventDocuments(documents); err != nil {
+		return models.Event{}, err
+	}
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -2106,6 +2558,14 @@ func (s *PostgresStore) CreateEvent(ctx context.Context, input models.CreateEven
 
 	if err := seedEventDefaults(ctx, tx, event.ID); err != nil {
 		return models.Event{}, err
+	}
+	for _, document := range documents {
+		if _, err := tx.Exec(ctx, `
+			insert into event_documents (event_id, label, url, type, required_for, sort_order)
+			values ($1, $2, $3, $4, $5, $6)
+		`, event.ID, document.Label, document.URL, document.Type, document.RequiredFor, document.SortOrder); err != nil {
+			return models.Event{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return models.Event{}, err
@@ -2193,6 +2653,13 @@ func (s *PostgresStore) LockEvent(ctx context.Context, eventID string) (models.E
 	if eventID == "" {
 		return models.Event{}, errors.New("event wajib dipilih")
 	}
+	documents, err := s.ListEventDocuments(ctx, eventID)
+	if err != nil {
+		return models.Event{}, err
+	}
+	if err := requireLockEventDocuments(documents); err != nil {
+		return models.Event{}, err
+	}
 
 	var event models.Event
 	if err := s.db.QueryRow(ctx, `
@@ -2222,6 +2689,100 @@ func (s *PostgresStore) LockEvent(ctx context.Context, eventID string) (models.E
 	return event, nil
 }
 
+func normalizeEventDocumentInputs(items []models.EventDocumentInput) ([]models.EventDocumentInput, error) {
+	normalized := make([]models.EventDocumentInput, 0, len(items))
+	seen := map[string]struct{}{}
+	for index, item := range items {
+		item.Label = strings.TrimSpace(item.Label)
+		item.URL = strings.TrimSpace(item.URL)
+		item.Type = strings.TrimSpace(strings.ToLower(item.Type))
+		item.RequiredFor = strings.TrimSpace(strings.ToLower(item.RequiredFor))
+		if item.Type == "" {
+			item.Type = "link"
+		}
+		if item.RequiredFor == "" {
+			item.RequiredFor = "archive"
+		}
+		if item.SortOrder == 0 {
+			item.SortOrder = index + 1
+		}
+		if item.Label == "" && item.URL == "" {
+			continue
+		}
+		if item.Label == "" || item.URL == "" {
+			return nil, errors.New("label dan link/file dokumen event wajib diisi")
+		}
+		if item.Type != "link" && item.Type != "file" {
+			return nil, errors.New("tipe dokumen event hanya boleh link atau file")
+		}
+		if item.RequiredFor != "create" && item.RequiredFor != "lock" && item.RequiredFor != "archive" {
+			return nil, errors.New("kebutuhan dokumen event hanya boleh create, lock, atau archive")
+		}
+		key := normalizeDocumentLabel(item.Label)
+		if _, exists := seen[key]; exists {
+			return nil, fmt.Errorf("dokumen %s tidak boleh duplikat", item.Label)
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, item)
+	}
+	return normalized, nil
+}
+
+func requireCreateEventDocuments(items []models.EventDocumentInput) error {
+	if hasDocumentLabel(items, "proposal") {
+		return nil
+	}
+	return errors.New("proposal wajib dilampirkan sebelum membuat event")
+}
+
+func requireLockEventDocuments(items []models.EventDocument) error {
+	inputs := make([]models.EventDocumentInput, 0, len(items))
+	for _, item := range items {
+		inputs = append(inputs, models.EventDocumentInput{Label: item.Label, URL: item.URL})
+	}
+	missing := make([]string, 0)
+	for _, label := range requiredLockDocumentLabels() {
+		if !hasDocumentLabel(inputs, label) {
+			missing = append(missing, label)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("lengkapi dokumen sebelum lock event: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func hasDocumentLabel(items []models.EventDocumentInput, label string) bool {
+	target := normalizeDocumentLabel(label)
+	for _, item := range items {
+		if strings.TrimSpace(item.URL) != "" && normalizeDocumentLabel(item.Label) == target {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeDocumentLabel(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, "&", "dan")
+	value = strings.ReplaceAll(value, "-", " ")
+	return strings.Join(strings.Fields(value), " ")
+}
+
+func requiredLockDocumentLabels() []string {
+	return []string{
+		"proposal",
+		"kak acara puncak",
+		"kak final pp",
+		"kak dan su",
+		"lpj",
+		"ba",
+		"surat media partner",
+		"tor",
+		"surat permohonan juri",
+	}
+}
+
 type eventDefaultExecutor interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
@@ -2230,6 +2791,13 @@ func seedEventDefaults(ctx context.Context, exec eventDefaultExecutor, eventID s
 	if _, err := exec.Exec(ctx, `
 		insert into event_rules (event_id, min_team_members, max_team_members)
 		values ($1, 2, 3)
+		on conflict (event_id) do nothing
+	`, eventID); err != nil {
+		return err
+	}
+	if _, err := exec.Exec(ctx, `
+		insert into event_registration_settings (event_id, current_batch)
+		values ($1, 1)
 		on conflict (event_id) do nothing
 	`, eventID); err != nil {
 		return err
@@ -2269,5 +2837,13 @@ func (s *PostgresStore) CreateAnnouncement(ctx context.Context, input models.Cre
 		results,
 		strings.TrimSpace(input.ImageURL),
 	)
-	return scanAnnouncement(row)
+	announcement, err := scanAnnouncement(row)
+	if err != nil {
+		return models.Announcement{}, err
+	}
+	enriched, err := s.enrichAnnouncementResults(ctx, input.EventID, []models.Announcement{announcement})
+	if err != nil {
+		return models.Announcement{}, err
+	}
+	return enriched[0], nil
 }

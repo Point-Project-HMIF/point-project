@@ -254,14 +254,6 @@ export function HomePage() {
               </Link>
             </div>
           </div>
-
-          <div className="mx-auto grid min-h-[70vh] max-w-7xl items-end px-4 pb-20 sm:px-6 lg:px-8">
-            <div className="grid max-w-4xl gap-3 sm:grid-cols-3 scroll-pop" data-scroll-pop>
-              <Metric value={`${rules?.minTeamMembers ?? 2}-${rules?.maxTeamMembers ?? 3}`} label="Peserta per tim" tone="light" />
-              <Metric value={event ? String(event.year) : "----"} label="Periode aktif" tone="light" />
-              <Metric value="R2" label="Karya tersimpan" tone="light" />
-            </div>
-          </div>
         </div>
       </section>
 

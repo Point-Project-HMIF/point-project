@@ -178,7 +178,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <ChevronUp size={24} strokeWidth={2.4} />
       </button>
       <RadialNavOverlay open={navOpen} pathname={location.pathname} navItems={navItems} onClose={() => setNavOpen(false)} />
-      <main key={location.pathname} className="relative z-10 flex-1 page-transition">
+      <main key={location.pathname} className={clsx("relative z-10 flex-1 page-transition", location.pathname !== "/" && "app-subpage")}>
         {children}
       </main>
       <footer className="site-footer relative z-10 border-t border-dark/10 bg-white text-[#05070d]">
@@ -274,11 +274,6 @@ function RadialNavOverlay({
       <button type="button" className="radial-close" onClick={onClose} aria-label="Tutup menu">
         <X size={34} strokeWidth={1.3} />
       </button>
-      <div className="radial-social" aria-hidden="true">
-        <span>in</span>
-        <span>yt</span>
-        <span>x</span>
-      </div>
       <div
         className={clsx("radial-menu-panel", hoveredIndex !== null && "has-hover")}
         role="navigation"
@@ -331,7 +326,7 @@ function RadialNavOverlay({
           })}
         </nav>
       </div>
-      <p className="radial-copyright">POINT PROJECT / HMIF ITERA</p>
+      <p className="radial-copyright">POINT PROJECT - HMIF ITERA</p>
     </div>
   );
 }
@@ -454,11 +449,11 @@ export function StatusPill({ children, tone = "teal" }: { children: ReactNode; t
   return (
     <span
       className={clsx(
-        "inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide",
-        tone === "teal" && "bg-primary/10 text-primary",
-        tone === "amber" && "bg-yellow/20 text-amber-800",
-        tone === "orange" && "bg-orange/10 text-orange",
-        tone === "dark" && "bg-dark text-white"
+        "status-marker inline-flex w-fit items-center text-xs font-black uppercase tracking-[0.18em]",
+        tone === "teal" && "status-marker--teal text-primary",
+        tone === "amber" && "status-marker--amber text-amber-700",
+        tone === "orange" && "status-marker--orange text-orange",
+        tone === "dark" && "status-marker--dark text-dark"
       )}
     >
       {children}

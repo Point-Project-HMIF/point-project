@@ -59,7 +59,11 @@ export function RegistrationPage() {
     api
       .activeEvent()
       .then(async (active) => {
-        const [nextCategories, nextRules] = await Promise.all([api.categories(active.id), api.rules(active.id)]);
+        const [nextCategories, nextRules, nextRegistrationSettings] = await Promise.all([
+          api.categories(active.id),
+          api.rules(active.id),
+          api.registrationSettings(active.id).catch(() => ({ eventId: active.id, currentBatch: 1, updatedAt: "" }))
+        ]);
         if (!alive) return;
         setEvent(active);
         setRules(nextRules);
@@ -68,7 +72,8 @@ export function RegistrationPage() {
         setForm((current) => ({
           ...current,
           eventId: active.id,
-          categoryId: nextCategories[0]?.id ?? ""
+          categoryId: nextCategories[0]?.id ?? "",
+          batch: nextRegistrationSettings.currentBatch || 1
         }));
       })
       .catch((err) => {
@@ -384,7 +389,7 @@ export function RegistrationPage() {
                     aria-disabled={!accessible}
                     className={clsx(
                       "flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-bold transition",
-                      step === index && "bg-dark text-white",
+                      step === index && "bg-primary text-white",
                       step !== index && accessible && "bg-light text-dark/70 hover:bg-primary/10",
                       !accessible && "cursor-not-allowed bg-light text-dark/35"
                     )}
@@ -392,7 +397,7 @@ export function RegistrationPage() {
                     <span
                       className={clsx(
                         "grid h-7 w-7 shrink-0 place-items-center rounded-md text-xs",
-                        step === index ? "bg-teal text-dark" : "bg-white text-dark",
+                        step === index ? "bg-white text-primary" : "bg-white text-dark",
                         !accessible && "text-dark/35"
                       )}
                     >
@@ -432,13 +437,13 @@ export function RegistrationPage() {
                     placeholder="Nama lengkap ketua"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="label" htmlFor="leader-email">
                     Email Ketua
                   </label>
                   <input
                     id="leader-email"
-                    className="field"
+                    className="field min-w-0 truncate"
                     type="email"
                     value={form.leaderEmail}
                     onChange={(event) => updateField("leaderEmail", event.target.value)}
@@ -495,7 +500,7 @@ export function RegistrationPage() {
                       <p className="text-sm font-black">Anggota {index + 2}</p>
                       <button
                         type="button"
-                        className="inline-flex items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-black text-red-600 transition hover:border-red-600 hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        className="btn-danger px-3 py-2"
                         onClick={() => removeMember(index)}
                         aria-label={`Hapus anggota ${index + 2}`}
                       >
@@ -516,13 +521,13 @@ export function RegistrationPage() {
                         placeholder="Nama lengkap"
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="label" htmlFor={`member-email-${index}`}>
                         Email
                       </label>
                       <input
                         id={`member-email-${index}`}
-                        className="field"
+                        className="field min-w-0 truncate"
                         type="email"
                         value={member.email}
                         onChange={(event) => updateMember(index, "email", event.target.value)}
@@ -562,15 +567,17 @@ export function RegistrationPage() {
                   <label className="label" htmlFor="batch">
                     Batch Pendaftaran
                   </label>
-                  <CustomSelect
+                  <div
                     id="batch"
-                    value={String(form.batch)}
-                    onChange={(value) => updateField("batch", Number(value))}
-                    options={[
-                      { value: "1", label: "Batch 1" },
-                      { value: "2", label: "Batch 2" }
-                    ]}
-                  />
+                    className="field flex items-center justify-between gap-3 bg-light font-black"
+                    aria-live="polite"
+                  >
+                    <span>Batch {form.batch}</span>
+                    <span className="text-xs uppercase tracking-[0.16em] text-dark/45">Dibuka panitia</span>
+                  </div>
+                  <p className="mt-2 text-xs font-bold leading-5 text-dark/55">
+                    Batch ini mengikuti pengaturan event aktif dan tidak bisa diubah peserta.
+                  </p>
                 </div>
                 <div>
                   <label className="label" htmlFor="category">
@@ -808,9 +815,9 @@ function isValidWhatsAppNumber(value: string) {
 
 function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="label">{label}</p>
-      <p className="rounded-md border border-dark/10 bg-white px-3 py-2.5 text-sm font-bold text-dark/70">{value}</p>
+      <p className="break-all rounded-md border border-dark/10 bg-white px-3 py-2.5 text-sm font-bold text-dark/70">{value}</p>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -28,6 +29,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/resend/resend-go/v3"
+	"github.com/xuri/excelize/v2"
 	"golang.org/x/crypto/bcrypt"
 
 	"pointproject/backend/internal/instagram"
@@ -56,6 +58,7 @@ type resendRegistrationMailer struct {
 type submissionFileStorage interface {
 	UploadSubmissionFile(ctx context.Context, team models.Team, stage, field string, header *multipart.FileHeader) (string, error)
 	UploadAnnouncementImage(ctx context.Context, header *multipart.FileHeader) (string, error)
+	UploadEventDocument(ctx context.Context, eventID string, header *multipart.FileHeader) (string, error)
 	DownloadSubmissionFile(ctx context.Context, key string) (submissionFileDownload, error)
 }
 
@@ -174,6 +177,47 @@ func (s *r2SubmissionFileStorage) UploadAnnouncementImage(ctx context.Context, h
 		base = "pengumuman"
 	}
 	key := fmt.Sprintf("announcements/%d-%s%s", time.Now().UnixNano(), base, ext)
+	if s.objectPrefix != "" {
+		key = s.objectPrefix + "/" + key
+	}
+	contentType := header.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	if _, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(s.bucket),
+		Key:         aws.String(key),
+		Body:        file,
+		ContentType: aws.String(contentType),
+	}); err != nil {
+		return "", err
+	}
+	if s.publicBaseURL != "" {
+		return s.publicBaseURL + "/" + key, nil
+	}
+	return "/api/files/r2/" + key, nil
+}
+
+func (s *r2SubmissionFileStorage) UploadEventDocument(ctx context.Context, eventID string, header *multipart.FileHeader) (string, error) {
+	if header == nil {
+		return "", nil
+	}
+	file, err := header.Open()
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	ext := cleanFileExt(header.Filename)
+	base := slugifyPathPart(strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename)))
+	if base == "" {
+		base = "dokumen-event"
+	}
+	eventFolder := slugifyPathPart(eventID)
+	if eventFolder == "" {
+		eventFolder = "event"
+	}
+	key := fmt.Sprintf("event-documents/%s/%d-%s%s", eventFolder, time.Now().UnixNano(), base, ext)
 	if s.objectPrefix != "" {
 		key = s.objectPrefix + "/" + key
 	}
@@ -387,7 +431,9 @@ func NewRouter(
 		r.Get("/events/{eventID}/timeline", server.listTimeline)
 		r.Get("/events/{eventID}/committee", server.listCommittee)
 		r.Get("/events/{eventID}/rules", server.eventRules)
+		r.Get("/events/{eventID}/registration-settings", server.eventRegistrationSettings)
 		r.Get("/events/{eventID}/faqs", server.listFAQs)
+		r.Get("/events/{eventID}/rubric", server.listRubricQuestions)
 		r.Get("/events/{eventID}/announcements", server.listAnnouncements)
 		r.Get("/events/{eventID}/teams", server.listPublicTeams)
 		r.Get("/files/r2/*", server.downloadR2File)
@@ -403,6 +449,7 @@ func NewRouter(
 		r.Group(func(r chi.Router) {
 			r.Use(server.requireAdmin)
 			r.Get("/admin/stats", server.adminStats)
+			r.Get("/admin/export.xlsx", server.exportAdminSpreadsheet)
 			r.Get("/admin/teams", server.listTeams)
 			r.Get("/admin/teams/{teamID}", server.teamDetail)
 			r.Delete("/admin/teams/{teamID}", server.deleteTeam)
@@ -411,13 +458,21 @@ func NewRouter(
 			r.Post("/admin/events", server.createEvent)
 			r.Patch("/admin/events/{eventID}/activate", server.activateEvent)
 			r.Patch("/admin/events/{eventID}/lock", server.lockEvent)
+			r.Get("/admin/events/{eventID}/documents", server.listEventDocuments)
+			r.Put("/admin/events/{eventID}/documents", server.replaceEventDocuments)
+			r.Post("/admin/events/{eventID}/documents/upload", server.uploadEventDocument)
 			r.Put("/admin/events/{eventID}/timeline", server.replaceTimeline)
 			r.Get("/admin/events/{eventID}/rules", server.eventRules)
 			r.Put("/admin/events/{eventID}/rules", server.updateEventRules)
+			r.Get("/admin/events/{eventID}/registration-settings", server.eventRegistrationSettings)
+			r.Put("/admin/events/{eventID}/registration-settings", server.updateEventRegistrationSettings)
 			r.Get("/admin/events/{eventID}/payment-settings", server.eventPaymentSettings)
 			r.Put("/admin/events/{eventID}/payment-settings", server.updateEventPaymentSettings)
 			r.Get("/admin/events/{eventID}/submission-stages", server.listSubmissionStages)
 			r.Put("/admin/events/{eventID}/submission-stages", server.replaceSubmissionStages)
+			r.Get("/admin/events/{eventID}/rubric", server.listRubricQuestions)
+			r.Put("/admin/events/{eventID}/rubric", server.replaceRubricQuestions)
+			r.Put("/admin/teams/{teamID}/assessment", server.saveJudgeAssessment)
 			r.Get("/admin/events/{eventID}/faqs", server.listAdminFAQs)
 			r.Post("/admin/faqs", server.createFAQ)
 			r.Put("/admin/faqs/{faqID}", server.updateFAQ)
@@ -536,6 +591,15 @@ func (s *Server) eventRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, rules)
+}
+
+func (s *Server) eventRegistrationSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := s.store.GetEventRegistrationSettings(r.Context(), chi.URLParam(r, "eventID"))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeData(w, http.StatusOK, settings)
 }
 
 func (s *Server) listFAQs(w http.ResponseWriter, r *http.Request) {
@@ -860,6 +924,458 @@ func (s *Server) adminStats(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, stats)
 }
 
+func (s *Server) exportAdminSpreadsheet(w http.ResponseWriter, r *http.Request) {
+	if !requireKadivOrSuperAdmin(w, r) {
+		return
+	}
+	eventID := strings.TrimSpace(r.URL.Query().Get("eventId"))
+	workbook, err := s.buildAdminExportWorkbook(r.Context(), eventID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	filename := "point-project-export-" + time.Now().Format("20060102-150405") + ".xlsx"
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(workbook.Bytes())
+}
+
+type exportSheet struct {
+	Name    string
+	Header  []string
+	Rows    [][]any
+	Widths  []float64
+	Summary string
+}
+
+func (s *Server) buildAdminExportWorkbook(ctx context.Context, eventFilter string) (*bytes.Buffer, error) {
+	events, err := s.store.ListEvents(ctx)
+	if err != nil {
+		return nil, err
+	}
+	selectedEvents := make([]models.Event, 0, len(events))
+	for _, event := range events {
+		if eventFilter == "" || event.ID == eventFilter {
+			selectedEvents = append(selectedEvents, event)
+		}
+	}
+	if eventFilter != "" && len(selectedEvents) == 0 {
+		event, err := s.store.GetEvent(ctx, eventFilter)
+		if err != nil {
+			return nil, err
+		}
+		selectedEvents = append(selectedEvents, event)
+	}
+
+	eventByID := make(map[string]models.Event, len(events))
+	for _, event := range events {
+		eventByID[event.ID] = event
+	}
+
+	teams, err := s.store.ListTeams(ctx, models.TeamFilters{EventID: eventFilter})
+	if err != nil {
+		return nil, err
+	}
+	adminUsers, err := s.store.ListAdminUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	userByID := make(map[string]models.AdminUser, len(adminUsers))
+	for _, user := range adminUsers {
+		userByID[user.ID] = user
+	}
+	redeemCodes, err := s.store.ListAdminRedeemCodes(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	eventRows := make([][]any, 0, len(selectedEvents))
+	registrationRows := [][]any{}
+	paymentRows := [][]any{}
+	rulesRows := [][]any{}
+	documentRows := [][]any{}
+	timelineRows := [][]any{}
+	stageRows := [][]any{}
+	committeeRows := [][]any{}
+	faqRows := [][]any{}
+	announcementRows := [][]any{}
+	rubricRows := [][]any{}
+
+	for _, event := range selectedEvents {
+		eventRows = append(eventRows, []any{
+			event.ID, event.Name, event.Year, event.Theme, event.Status, event.StartDate, event.EndDate, event.LockedAt,
+		})
+
+		registrationSettings, err := s.store.GetEventRegistrationSettings(ctx, event.ID)
+		if err != nil {
+			return nil, err
+		}
+		registrationRows = append(registrationRows, []any{
+			eventLabel(event), event.ID, registrationSettings.CurrentBatch, registrationSettings.UpdatedAt,
+		})
+
+		payment, err := s.store.GetEventPaymentSettings(ctx, event.ID, s.pakasirFallbackAmount())
+		if err != nil {
+			return nil, err
+		}
+		paymentRows = append(paymentRows, []any{
+			eventLabel(event), event.ID, payment.Amount, payment.IsEnabled, payment.UpdatedAt,
+		})
+
+		rules, err := s.store.GetEventRules(ctx, event.ID)
+		if err == nil {
+			rulesRows = append(rulesRows, []any{
+				eventLabel(event), event.ID, rules.MinTeamMembers, rules.MaxTeamMembers,
+			})
+		}
+
+		documents, err := s.store.ListEventDocuments(ctx, event.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, document := range documents {
+			documentRows = append(documentRows, []any{
+				eventLabel(event), document.ID, document.SortOrder, document.Label,
+				document.Type, document.RequiredFor, document.URL, document.CreatedAt, document.UpdatedAt,
+			})
+		}
+
+		timeline, err := s.store.ListTimeline(ctx, event.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range timeline {
+			timelineRows = append(timelineRows, []any{
+				eventLabel(event), item.ID, item.SortOrder, item.Label, item.StartDate, item.EndDate, item.Description,
+			})
+		}
+
+		stages, err := s.store.ListSubmissionStages(ctx, event.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, stage := range stages {
+			stageRows = append(stageRows, []any{
+				eventLabel(event), stage.ID, stage.SortOrder, stage.Key, stage.Label, stage.IsOpen, stage.RequiresApproval,
+			})
+		}
+
+		committee, err := s.store.ListCommittee(ctx, event.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, member := range committee {
+			committeeRows = append(committeeRows, []any{
+				eventLabel(event), member.ID, member.Name, member.Identity, member.Position, member.Division,
+			})
+		}
+
+		faqs, err := s.store.ListFAQs(ctx, event.ID, true)
+		if err != nil {
+			return nil, err
+		}
+		for _, faq := range faqs {
+			faqRows = append(faqRows, []any{
+				eventLabel(event), faq.ID, faq.SortOrder, faq.Question, faq.Answer, faq.IsPublished,
+			})
+		}
+
+		announcements, err := s.store.ListAnnouncements(ctx, event.ID, "")
+		if err != nil {
+			return nil, err
+		}
+		for _, announcement := range announcements {
+			announcementRows = append(announcementRows, []any{
+				eventLabel(event), announcement.ID, announcement.Type, announcement.Title, announcement.Body,
+				announcement.Source, announcement.SourceURL, announcement.ImageURL, announcement.PublishedAt, len(announcement.Results),
+			})
+		}
+
+		rubric, err := s.store.ListRubricQuestions(ctx, event.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, question := range rubric {
+			rubricRows = append(rubricRows, []any{
+				eventLabel(event), question.ID, question.SortOrder, question.Question, question.Description, question.MaxScore, question.IsActive,
+			})
+		}
+	}
+
+	teamRows := make([][]any, 0, len(teams))
+	memberRows := [][]any{}
+	submissionRows := [][]any{}
+	stageAccessRows := [][]any{}
+	assessmentRows := [][]any{}
+	scoreRows := [][]any{}
+
+	for _, team := range teams {
+		event := eventByID[team.EventID]
+		detail, err := s.store.GetTeamDetail(ctx, team.ID)
+		if err != nil {
+			return nil, err
+		}
+		if event.ID == "" {
+			event = detail.Event
+		}
+		teamRows = append(teamRows, []any{
+			team.ID, eventLabel(event), team.CategoryName, team.Name, team.Batch, team.Institution,
+			team.LeaderName, team.LeaderEmail, team.LeaderPhone, team.VerificationStatus, team.CreatedAt,
+		})
+		for index, member := range team.Members {
+			memberRows = append(memberRows, []any{
+				team.ID, team.Name, index + 1, member.Name, member.Email, member.Role,
+			})
+		}
+		for _, submission := range detail.Submissions {
+			submissionRows = append(submissionRows, []any{
+				submission.ID, team.ID, team.Name, eventLabel(event), submission.Stage, submission.Status,
+				submission.PrototypeURL, submission.ProposalURL, submission.PPTURL, submission.PosterURL, submission.ReportURL, submission.SubmittedAt,
+			})
+		}
+		for _, stage := range detail.SubmissionStages {
+			stageAccessRows = append(stageAccessRows, []any{
+				team.ID, team.Name, stage.Stage.ID, stage.Stage.Label, stage.Stage.Key,
+				stage.Stage.IsOpen, stage.IsAllowed, stage.CanSubmit, stage.Reason,
+			})
+		}
+		for _, assessment := range detail.Assessments {
+			assessmentRows = append(assessmentRows, []any{
+				team.ID, team.Name, eventLabel(event), assessment.JudgeName, assessment.JudgeID,
+				assessment.TotalScore, assessment.Notes, assessment.UpdatedAt,
+			})
+			for _, score := range assessment.Scores {
+				scoreRows = append(scoreRows, []any{
+					team.ID, team.Name, eventLabel(event), assessment.JudgeName, score.Question.ID,
+					score.Question.Question, score.Score, score.Question.MaxScore, assessment.UpdatedAt,
+				})
+			}
+		}
+	}
+
+	adminRows := make([][]any, 0, len(adminUsers))
+	for _, user := range adminUsers {
+		adminRows = append(adminRows, []any{
+			user.ID, user.Name, user.NIM, user.Email, user.Role, user.Division,
+		})
+	}
+
+	redeemRows := make([][]any, 0, len(redeemCodes))
+	for _, code := range redeemCodes {
+		createdBy := code.CreatedBy
+		if user, ok := userByID[code.CreatedBy]; ok {
+			createdBy = user.Name + " (" + user.Email + ")"
+		}
+		redeemRows = append(redeemRows, []any{
+			code.ID, code.Code, code.ClaimURL, code.Role, code.Division, code.Status,
+			code.MaxClaims, code.ClaimedCount, createdBy, code.ExpiresAt, code.CreatedAt,
+		})
+	}
+
+	file := excelize.NewFile()
+	defer file.Close()
+	headerStyle, _ := file.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"006CB8"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "left", Vertical: "center", WrapText: true},
+		Border: []excelize.Border{
+			{Type: "bottom", Color: "0A0F18", Style: 1},
+		},
+	})
+	bodyStyle, _ := file.NewStyle(&excelize.Style{
+		Alignment: &excelize.Alignment{Vertical: "top", WrapText: true},
+		Border: []excelize.Border{
+			{Type: "bottom", Color: "E5E7EB", Style: 1},
+		},
+	})
+
+	sheets := []exportSheet{
+		{
+			Name:   "Events",
+			Header: []string{"Event ID", "Nama Event", "Tahun", "Tema", "Status", "Tanggal Mulai", "Tanggal Selesai", "Locked At"},
+			Rows:   eventRows,
+		},
+		{
+			Name:   "Peserta",
+			Header: []string{"Team ID", "Event", "Kategori", "Nama Tim", "Batch", "Instansi", "Ketua", "Email Ketua", "WhatsApp Ketua", "Status Verifikasi", "Dibuat Pada"},
+			Rows:   teamRows,
+		},
+		{
+			Name:   "Anggota Tim",
+			Header: []string{"Team ID", "Nama Tim", "Urutan", "Nama Anggota", "Email", "Role"},
+			Rows:   memberRows,
+		},
+		{
+			Name:   "Submission",
+			Header: []string{"Submission ID", "Team ID", "Nama Tim", "Event", "Tahap", "Status", "Prototype/Figma", "Proposal", "PPT", "Poster", "Laporan", "Dikirim Pada"},
+			Rows:   submissionRows,
+		},
+		{
+			Name:   "Akses Tahap Tim",
+			Header: []string{"Team ID", "Nama Tim", "Stage ID", "Nama Tahap", "Key", "Tahap Dibuka", "Tim Diizinkan", "Bisa Submit", "Alasan"},
+			Rows:   stageAccessRows,
+		},
+		{
+			Name:   "Harga Pendaftaran",
+			Header: []string{"Event", "Event ID", "Harga", "Aktif", "Diubah Pada"},
+			Rows:   paymentRows,
+		},
+		{
+			Name:   "Batch Pendaftaran",
+			Header: []string{"Event", "Event ID", "Batch Aktif", "Diubah Pada"},
+			Rows:   registrationRows,
+		},
+		{
+			Name:   "Aturan Event",
+			Header: []string{"Event", "Event ID", "Minimal Peserta", "Maksimal Peserta"},
+			Rows:   rulesRows,
+		},
+		{
+			Name:   "Dokumen Event",
+			Header: []string{"Event", "Document ID", "Urutan", "Nama Dokumen", "Tipe", "Kebutuhan", "URL/File", "Dibuat Pada", "Diubah Pada"},
+			Rows:   documentRows,
+		},
+		{
+			Name:   "Akun Panitia Juri",
+			Header: []string{"Admin ID", "Nama", "NIM", "Email", "Role", "Divisi"},
+			Rows:   adminRows,
+		},
+		{
+			Name:   "Kode Redeem",
+			Header: []string{"Redeem ID", "Kode", "Claim URL", "Role", "Divisi", "Status", "Maks Klaim", "Sudah Diklaim", "Dibuat Oleh", "Kedaluwarsa", "Dibuat Pada"},
+			Rows:   redeemRows,
+		},
+		{
+			Name:   "Timeline",
+			Header: []string{"Event", "Timeline ID", "Urutan", "Label", "Mulai", "Selesai", "Deskripsi"},
+			Rows:   timelineRows,
+		},
+		{
+			Name:   "Tahap Upload",
+			Header: []string{"Event", "Stage ID", "Urutan", "Key", "Label", "Dibuka", "Butuh Approval"},
+			Rows:   stageRows,
+		},
+		{
+			Name:   "Struktur Panitia",
+			Header: []string{"Event", "Member ID", "Nama", "Identitas", "Posisi", "Divisi"},
+			Rows:   committeeRows,
+		},
+		{
+			Name:   "FAQ",
+			Header: []string{"Event", "FAQ ID", "Urutan", "Pertanyaan", "Jawaban", "Published"},
+			Rows:   faqRows,
+		},
+		{
+			Name:   "Pengumuman",
+			Header: []string{"Event", "Announcement ID", "Jenis", "Judul", "Isi", "Sumber", "URL Sumber", "Gambar", "Published At", "Jumlah Hasil/Tim"},
+			Rows:   announcementRows,
+		},
+		{
+			Name:   "Rubrik",
+			Header: []string{"Event", "Question ID", "Urutan", "Pertanyaan", "Deskripsi", "Skor Maksimal", "Aktif"},
+			Rows:   rubricRows,
+		},
+		{
+			Name:   "Nilai Juri",
+			Header: []string{"Team ID", "Nama Tim", "Event", "Juri", "Judge ID", "Total Skor", "Catatan", "Diubah Pada"},
+			Rows:   assessmentRows,
+		},
+		{
+			Name:   "Skor Rubrik",
+			Header: []string{"Team ID", "Nama Tim", "Event", "Juri", "Question ID", "Pertanyaan", "Skor", "Skor Maksimal", "Diubah Pada"},
+			Rows:   scoreRows,
+		},
+	}
+
+	for _, sheet := range sheets {
+		if err := writeExportSheet(file, sheet, headerStyle, bodyStyle); err != nil {
+			return nil, err
+		}
+	}
+	_ = file.DeleteSheet("Sheet1")
+	file.SetActiveSheet(0)
+
+	buffer, err := file.WriteToBuffer()
+	if err != nil {
+		return nil, err
+	}
+	return buffer, nil
+}
+
+func writeExportSheet(file *excelize.File, sheet exportSheet, headerStyle, bodyStyle int) error {
+	sheetName := safeExcelSheetName(sheet.Name)
+	if _, err := file.NewSheet(sheetName); err != nil {
+		return err
+	}
+	for columnIndex, header := range sheet.Header {
+		cell, _ := excelize.CoordinatesToCellName(columnIndex+1, 1)
+		if err := file.SetCellValue(sheetName, cell, header); err != nil {
+			return err
+		}
+	}
+	for rowIndex, row := range sheet.Rows {
+		for columnIndex, value := range row {
+			cell, _ := excelize.CoordinatesToCellName(columnIndex+1, rowIndex+2)
+			if err := file.SetCellValue(sheetName, cell, value); err != nil {
+				return err
+			}
+		}
+	}
+	if len(sheet.Header) > 0 {
+		lastHeaderCell, _ := excelize.CoordinatesToCellName(len(sheet.Header), 1)
+		_ = file.SetCellStyle(sheetName, "A1", lastHeaderCell, headerStyle)
+		if len(sheet.Rows) > 0 {
+			lastBodyCell, _ := excelize.CoordinatesToCellName(len(sheet.Header), len(sheet.Rows)+1)
+			_ = file.SetCellStyle(sheetName, "A2", lastBodyCell, bodyStyle)
+		}
+		_ = file.SetPanes(sheetName, &excelize.Panes{
+			Freeze:      true,
+			Split:       false,
+			XSplit:      0,
+			YSplit:      1,
+			TopLeftCell: "A2",
+			ActivePane:  "bottomLeft",
+		})
+		for columnIndex, header := range sheet.Header {
+			width := 18.0
+			if len(header) > 18 {
+				width = float64(len(header) + 4)
+			}
+			if width > 42 {
+				width = 42
+			}
+			columnName, _ := excelize.ColumnNumberToName(columnIndex + 1)
+			_ = file.SetColWidth(sheetName, columnName, columnName, width)
+		}
+	}
+	return nil
+}
+
+func eventLabel(event models.Event) string {
+	if event.Name == "" {
+		return ""
+	}
+	if event.Year == 0 {
+		return event.Name
+	}
+	return fmt.Sprintf("%d - %s", event.Year, event.Name)
+}
+
+func safeExcelSheetName(name string) string {
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ", "*", " ", "?", " ", "/", " ", "\\", " ")
+	name = strings.TrimSpace(replacer.Replace(name))
+	if name == "" {
+		name = "Sheet"
+	}
+	runes := []rune(name)
+	if len(runes) > 31 {
+		runes = runes[:31]
+	}
+	return string(runes)
+}
+
 func (s *Server) listTeams(w http.ResponseWriter, r *http.Request) {
 	batch, _ := strconv.Atoi(r.URL.Query().Get("batch"))
 	teams, err := s.store.ListTeams(r.Context(), models.TeamFilters{
@@ -896,6 +1412,9 @@ func (s *Server) deleteTeam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) verifyTeam(w http.ResponseWriter, r *http.Request) {
+	if !requireNonJury(w, r) {
+		return
+	}
 	var input models.VerifyTeamRequest
 	_ = decodeJSON(r, &input)
 	team, err := s.store.UpdateTeamStatus(r.Context(), chi.URLParam(r, "teamID"), input.Status)
@@ -907,6 +1426,9 @@ func (s *Server) verifyTeam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) setTeamStageAccess(w http.ResponseWriter, r *http.Request) {
+	if !requireNonJury(w, r) {
+		return
+	}
 	var input models.TeamStageAccessRequest
 	if err := decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -961,7 +1483,70 @@ func (s *Server) lockEvent(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, event)
 }
 
+func (s *Server) listEventDocuments(w http.ResponseWriter, r *http.Request) {
+	if !requireSuperAdmin(w, r) {
+		return
+	}
+	documents, err := s.store.ListEventDocuments(r.Context(), chi.URLParam(r, "eventID"))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeData(w, http.StatusOK, documents)
+}
+
+func (s *Server) replaceEventDocuments(w http.ResponseWriter, r *http.Request) {
+	if !requireSuperAdmin(w, r) {
+		return
+	}
+	var input models.ReplaceEventDocumentsRequest
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	documents, err := s.store.ReplaceEventDocuments(r.Context(), chi.URLParam(r, "eventID"), input.Items)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusOK, documents)
+}
+
+func (s *Server) uploadEventDocument(w http.ResponseWriter, r *http.Request) {
+	if !requireSuperAdmin(w, r) {
+		return
+	}
+	if s.files == nil {
+		writeMessage(w, http.StatusServiceUnavailable, "penyimpanan file R2 belum dikonfigurasi")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxSubmissionUploadBytes)
+	if err := r.ParseMultipartForm(maxSubmissionUploadBytes); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeMessage(w, http.StatusBadRequest, "file dokumen wajib diunggah")
+		return
+	}
+	_ = file.Close()
+	if header.Size > maxSubmissionUploadBytes {
+		writeMessage(w, http.StatusBadRequest, "ukuran dokumen maksimal 80MB")
+		return
+	}
+	url, err := s.files.UploadEventDocument(r.Context(), chi.URLParam(r, "eventID"), header)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeData(w, http.StatusCreated, map[string]string{"url": url})
+}
+
 func (s *Server) replaceTimeline(w http.ResponseWriter, r *http.Request) {
+	if !requireNonJury(w, r) {
+		return
+	}
 	var input models.ReplaceTimelineRequest
 	if err := decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -976,6 +1561,9 @@ func (s *Server) replaceTimeline(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateEventRules(w http.ResponseWriter, r *http.Request) {
+	if !requireNonJury(w, r) {
+		return
+	}
 	var input models.EventRulesRequest
 	if err := decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -987,6 +1575,23 @@ func (s *Server) updateEventRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, rules)
+}
+
+func (s *Server) updateEventRegistrationSettings(w http.ResponseWriter, r *http.Request) {
+	if !requireNonJury(w, r) {
+		return
+	}
+	var input models.EventRegistrationSettingsRequest
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	settings, err := s.store.UpdateEventRegistrationSettings(r.Context(), chi.URLParam(r, "eventID"), input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusOK, settings)
 }
 
 func (s *Server) eventPaymentSettings(w http.ResponseWriter, r *http.Request) {
@@ -1025,6 +1630,9 @@ func (s *Server) listSubmissionStages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) replaceSubmissionStages(w http.ResponseWriter, r *http.Request) {
+	if !requireNonJury(w, r) {
+		return
+	}
 	var input models.ReplaceSubmissionStagesRequest
 	if err := decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -1038,6 +1646,53 @@ func (s *Server) replaceSubmissionStages(w http.ResponseWriter, r *http.Request)
 	writeData(w, http.StatusOK, stages)
 }
 
+func (s *Server) listRubricQuestions(w http.ResponseWriter, r *http.Request) {
+	items, err := s.store.ListRubricQuestions(r.Context(), chi.URLParam(r, "eventID"))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeData(w, http.StatusOK, items)
+}
+
+func (s *Server) replaceRubricQuestions(w http.ResponseWriter, r *http.Request) {
+	role, _ := r.Context().Value(adminRoleContextKey).(string)
+	if role == "juri" {
+		writeMessage(w, http.StatusForbidden, "juri hanya dapat memberi nilai, bukan mengubah rubrik")
+		return
+	}
+	var input models.ReplaceRubricQuestionsRequest
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	items, err := s.store.ReplaceRubricQuestions(r.Context(), chi.URLParam(r, "eventID"), input.Items)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusOK, items)
+}
+
+func (s *Server) saveJudgeAssessment(w http.ResponseWriter, r *http.Request) {
+	role, _ := r.Context().Value(adminRoleContextKey).(string)
+	if role != "juri" {
+		writeMessage(w, http.StatusForbidden, "hanya juri yang dapat menyimpan penilaian")
+		return
+	}
+	var input models.JudgeAssessmentRequest
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	detail, err := s.store.SaveJudgeAssessment(r.Context(), chi.URLParam(r, "teamID"), currentAdminID(r), input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeData(w, http.StatusOK, detail)
+}
+
 func (s *Server) listAdminFAQs(w http.ResponseWriter, r *http.Request) {
 	faqs, err := s.store.ListFAQs(r.Context(), chi.URLParam(r, "eventID"), true)
 	if err != nil {
@@ -1048,6 +1703,9 @@ func (s *Server) listAdminFAQs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createFAQ(w http.ResponseWriter, r *http.Request) {
+	if !requireNonJury(w, r) {
+		return
+	}
 	var input models.FAQInput
 	if err := decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -1062,6 +1720,9 @@ func (s *Server) createFAQ(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateFAQ(w http.ResponseWriter, r *http.Request) {
+	if !requireNonJury(w, r) {
+		return
+	}
 	var input models.FAQInput
 	if err := decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -1076,6 +1737,9 @@ func (s *Server) updateFAQ(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteFAQ(w http.ResponseWriter, r *http.Request) {
+	if !requireNonJury(w, r) {
+		return
+	}
 	if err := s.store.DeleteFAQ(r.Context(), chi.URLParam(r, "faqID")); err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return
@@ -1084,6 +1748,9 @@ func (s *Server) deleteFAQ(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createAnnouncement(w http.ResponseWriter, r *http.Request) {
+	if !requireNonJury(w, r) {
+		return
+	}
 	var input models.CreateAnnouncementRequest
 	if err := decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -1098,6 +1765,9 @@ func (s *Server) createAnnouncement(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uploadAnnouncementImage(w http.ResponseWriter, r *http.Request) {
+	if !requireNonJury(w, r) {
+		return
+	}
 	if s.files == nil {
 		writeMessage(w, http.StatusServiceUnavailable, "penyimpanan file R2 belum dikonfigurasi")
 		return
@@ -1129,6 +1799,9 @@ func (s *Server) uploadAnnouncementImage(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) listAdminUsers(w http.ResponseWriter, r *http.Request) {
+	if !requireNonJury(w, r) {
+		return
+	}
 	users, err := s.store.ListAdminUsers(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -1246,8 +1919,16 @@ func requireKadivOrSuperAdmin(w http.ResponseWriter, r *http.Request) bool {
 	if role == "admin" || role == "super_admin" {
 		return true
 	}
-	writeMessage(w, http.StatusForbidden, "hanya kadiv atau super admin yang dapat membuat kode redeem")
+	writeMessage(w, http.StatusForbidden, "hanya kadiv atau super admin yang dapat mengakses fitur ini")
 	return false
+}
+
+func requireNonJury(w http.ResponseWriter, r *http.Request) bool {
+	if role, _ := r.Context().Value(adminRoleContextKey).(string); role == "juri" {
+		writeMessage(w, http.StatusForbidden, "akses juri hanya untuk melihat peserta dan menyimpan penilaian")
+		return false
+	}
+	return true
 }
 
 func currentAdminID(r *http.Request) string {
