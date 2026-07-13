@@ -92,9 +92,10 @@ export function HomePage() {
       const rect = target.getBoundingClientRect();
       const travel = Math.max(1, rect.height - window.innerHeight);
       const progress = Math.min(1, Math.max(0, -rect.top / travel));
-      const nextDark = progress >= 0.25 && progress < 0.93 ? 1 : 0;
+      const exitStart = 0.985;
+      const nextDark = progress >= 0.25 ? 1 : 0;
       const nextCubeLight = nextDark ? Math.min(1, Math.max(0, (progress - 0.23) / 0.12)) : 0;
-      const nextExit = progress >= 0.93 ? 1 : 0;
+      const nextExit = Math.min(1, Math.max(0, (progress - exitStart) / (1 - exitStart)));
       setHeroDarkProgress(nextDark);
       setCubeLightProgress(nextCubeLight);
       setHeroExitProgress(nextExit);
@@ -137,7 +138,7 @@ export function HomePage() {
         } as CSSProperties
       }
     >
-      <section id="rubik-scroll-area" className="relative isolate min-h-[430vh] overflow-clip border-b border-dark/10 bg-[#05070d]">
+      <section id="rubik-scroll-area" className="relative isolate min-h-[385vh] overflow-clip bg-[#05070d]">
         <div className="sticky top-0 h-screen overflow-hidden bg-[#05070d]">
           <div className="absolute inset-0 z-0 bg-white" style={{ opacity: 1 - heroDarkProgress }} aria-hidden="true" />
           <div className="hero-dark-stage absolute inset-0 z-0" aria-hidden="true" />
@@ -258,7 +259,7 @@ export function HomePage() {
       </section>
 
       <div className="home-light-zone light-page">
-      <section className="tech-grid bg-[#05070d] py-16 scroll-pop" data-scroll-pop>
+      <section className="tech-grid bg-[#05070d] py-12 scroll-pop" data-scroll-pop>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <TechHeading
             eyebrow="Timeline"
@@ -376,7 +377,7 @@ export function HomePage() {
               {
                 icon: Mail,
                 title: "Email",
-                text: "pointproject@hmifitera.id"
+                text: "pointproject@gmail.com"
               }
             ].map((item) => {
               const Icon = item.icon;

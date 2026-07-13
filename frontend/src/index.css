@@ -13,6 +13,7 @@
 :root {
   font-family:
     "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: calc(16px * var(--browser-zoom-scale, 1));
   color: #061b33;
   background: #f3f7fb;
   font-synthesis: none;
@@ -27,6 +28,21 @@
   --color-cyan: #66e8ff;
   --color-ink: #05070d;
   --clip-card-corner: 16px;
+  --browser-zoom-scale: 1;
+}
+
+@media (max-width: 767px) {
+  :root {
+    font-size: 16px;
+    --browser-zoom-scale: 1;
+  }
+}
+
+@media (min-width: 768px) {
+  body svg:not([data-no-zoom-stabilize="true"]) {
+    transform: scale(var(--browser-zoom-scale, 1));
+    transform-origin: center;
+  }
 }
 
 .leaderboard-arcade {
